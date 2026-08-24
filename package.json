@@ -1,0 +1,17 @@
+{
+  "name": "forge-agent-org",
+  "version": "1.0.0",
+  "description": "F.O.R.G.E. — Foundry for Organized Reasoning, Governance and Evolution. A six-seat board, twelve divisions and 46 specialists for Claude Code, with zero dependencies.",
+  "type": "module",
+  "bin": { "forge": "./scripts/forge.mjs" },
+  "scripts": {
+    "test": "node --test tests/",
+    "doctor": "node scripts/forge.mjs doctor",
+    "build": "node scripts/forge.mjs build --apply",
+    "check": "npm run build && npm run doctor && npm test"
+  },
+  "engines": { "node": ">=18.0.0" },
+  "license": "MIT",
+  "keywords": ["claude-code", "agents", "multi-agent", "orchestration", "governance"],
+  "files": ["charter", "registry", "agents", "skills", "scripts", "CHARTER.md", "README.md"]
+}

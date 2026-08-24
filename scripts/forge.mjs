@@ -28,7 +28,7 @@ import { observe, readLedger, derive, saveMemory, files } from './ledger.mjs';
  * fold over a few hundred rows; there was never a reason to cache it for correctness.
  */
 const currentMemory = () => derive(readLedger()).memory;
-import { profileWorkspace, renderProfile, propose, applyProposal, loadOverlay, CAP } from './learn.mjs';
+import { profileWorkspace, renderProfile, propose, applyProposal, loadOverlay, briefing, CAP } from './learn.mjs';
 import { install } from './install.mjs';
 import { charterDoc } from './charter-doc.mjs';
 import { startDeck } from './deck.mjs';
@@ -64,6 +64,8 @@ F.O.R.G.E. — Foundry for Organized Reasoning, Governance and Evolution
 
   forge deck [--port 7717]      open the Command Deck in a browser. Loopback only,
                                 zero dependencies, reads this workspace's .forge/
+  forge context                 the session briefing: what this workspace has taught the
+                                organization. Prints nothing when nothing is known.
 
   forge observe --agent <n> --capability <c> --outcome ok|partial|fail|blocked
       [--correction "..."] [--tokens N] [--campaign id]
@@ -208,6 +210,14 @@ switch (cmd) {
       deck.close();
       process.exit(0);
     });
+    break;
+  }
+
+  case 'context': {
+    // Emits the session briefing, or nothing at all. Wired into a SessionStart hook, so
+    // "nothing to say" must print nothing rather than a header with no content under it.
+    const text = briefing(org(), process.cwd());
+    if (text) console.log(text);
     break;
   }
 

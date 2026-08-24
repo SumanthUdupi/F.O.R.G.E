@@ -31,6 +31,8 @@ import path from 'node:path';
 import { parse } from './yaml.mjs';
 import { files, readLedger, derive } from './ledger.mjs';
 
+const readLedgerFor = (cwd) => readLedger(cwd);
+
 export const CAP = { proposals: 5, agents: 3 };
 
 /** Nothing under these may ever be a proposal target. Checked by prefix, after resolution. */
@@ -324,4 +326,57 @@ export const loadOverlay = (cwd = process.cwd()) => {
   } catch {
     return { adaptations: [] };
   }
+};
+
+/**
+ * The session briefing.
+ *
+ * Absorbed from the harness this organization replaced, which injected a repository scan at
+ * the start of every session. That version listed what existed; it hit its own scan limits
+ * on a large tree and reported "UNKNOWN" for most of what mattered, which is a briefing that
+ * costs tokens and answers nothing.
+ *
+ * This one carries only what the organization has actually LEARNED about the workspace --
+ * the graded profile, the adaptations the Principal approved, and the agents whose measured
+ * reliability would change a routing decision. Everything else is discoverable on demand and
+ * does not belong in every prompt.
+ *
+ * Silence is the correct output for a workspace nothing is known about. A briefing that
+ * always has something to say trains the reader to skip it.
+ */
+export const briefing = (org, cwd = process.cwd()) => {
+  const rows = readLedgerFor(cwd);
+  const { memory } = derive(rows);
+  const overlay = loadOverlay(cwd);
+  const profile = profileWorkspace(cwd);
+
+  const lines = [];
+  // A field has to carry information, not merely have been determined. The first version
+  // filtered on grade alone and emitted a briefing whose entire content was
+  // "hasTests=false (INFERENCE)" -- true, graded, and worth nothing in every prompt of
+  // every session. An absent thing is only worth saying when something else is present.
+  const informative = ([, v]) =>
+    v.grade !== 'UNKNOWN' && v.value !== null && v.value !== false && !(Array.isArray(v.value) && !v.value.length);
+  const known = Object.entries(profile).filter(informative);
+  if (known.some(([, v]) => v.grade === 'EVIDENCE')) {
+    lines.push(`WORKSPACE  ${known.map(([k, v]) => `${k}=${Array.isArray(v.value) ? v.value.join('/') : v.value} (${v.grade})`).join(' · ')}`);
+  }
+
+  const adaptations = overlay.adaptations || [];
+  if (adaptations.length) {
+    lines.push('IN FORCE HERE, approved by the Principal — these outrank your general instinct:');
+    for (const a of adaptations) lines.push(`  - ${a.change}${a.detail ? ` (${a.detail})` : ''}`);
+  }
+
+  // Only agents far enough from the prior to change a route are worth the tokens.
+  const notable = Object.entries(memory)
+    .filter(([, m]) => m.n >= 3 && (m.reliability < 0.55 || m.reliability > 0.85))
+    .sort((a, b) => a[1].reliability - b[1].reliability);
+  if (notable.length) {
+    lines.push('MEASURED HERE:');
+    for (const [n, m] of notable) lines.push(`  - ${n} ${m.reliability} over ${m.n} observations`);
+  }
+
+  if (!lines.length) return '';
+  return `F.O.R.G.E. — what this workspace has taught the organization\n${lines.join('\n')}`;
 };

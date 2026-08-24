@@ -139,6 +139,19 @@ because it has no remote.
 Every view deep-links: `?view=learning`, `?view=vector&request=...`, `?live=0` to freeze it
 for a screenshot.
 
+### Wire it into every session
+
+Two hooks in `~/.claude/settings.json` make the organization engage without being asked:
+
+```jsonc
+"UserPromptSubmit"  // the routing gate — invoke forge before self-routing anything non-trivial
+"SessionStart"      // forge context — inject what this workspace has taught the organization
+```
+
+`forge context` prints **nothing** for a workspace it knows nothing about, so a fresh
+repository costs zero tokens. It only speaks once there is graded evidence, an approved
+adaptation, or an agent whose measured reliability would change a routing decision.
+
 ### It is not a second way to start work
 
 The deck shows what the organization knows and lets you approve a proposal. It does not
@@ -273,6 +286,7 @@ tests/                      133 tests, node:test, zero dependencies
 | `forge build --apply` | regenerate `agents/` from the registry |
 | `forge install --apply` | install into `~/.claude` |
 | `forge deck` | the Command Deck, on loopback |
+| `forge context` | the session briefing — silent when nothing is known |
 
 ## Lineage
 

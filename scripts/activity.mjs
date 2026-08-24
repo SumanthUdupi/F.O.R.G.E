@@ -131,7 +131,11 @@ const readSession = (file) => {
  */
 export const allSessions = ({ limit = 24, perWorkspace = 6 } = {}) => {
   const root = PROJECTS();
-  if (!fs.existsSync(root)) return { available: false, sessions: [] };
+  // One shape, always. The first version returned a short object on the no-transcripts
+  // path, so activeCount came back undefined on exactly the machine that path exists for
+  // — a CI runner with no ~/.claude/projects. A contract that changes shape when the
+  // answer is "nothing" is not a contract.
+  if (!fs.existsSync(root)) return { available: false, total: 0, sessions: [], activeCount: 0 };
   const files = [];
   for (const dir of fs.readdirSync(root)) {
     const full = path.join(root, dir);
@@ -159,7 +163,7 @@ export const allSessions = ({ limit = 24, perWorkspace = 6 } = {}) => {
  * Names only agents the transcripts actually recorded — never a guess.
  */
 export const orgActivity = () => {
-  const { sessions, available, activeCount } = allSessions({ limit: 24 });
+  const { sessions, available, activeCount = 0 } = allSessions({ limit: 24 });
   const events = [];
   const agentBusy = new Map();
   for (const s of sessions) {

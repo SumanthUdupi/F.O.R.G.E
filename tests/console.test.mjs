@@ -379,3 +379,26 @@ describe('org-wide activity — ground truth, never invented', () => {
     assert.match(task, /forge\.mjs.{0,3} deck/, 'the task does not start the Console');
   });
 });
+
+describe('the activity reader on a machine with no transcripts at all', () => {
+  test('returns the SAME shape as when it has data — CI is that machine', async () => {
+    // The defect this pins: the no-transcripts path returned a short object, so
+    // activeCount was undefined on exactly the machine the path exists for. A contract
+    // that changes shape when the answer is "nothing" is not a contract.
+    const realHome = process.env.HOME;
+    process.env.HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-nohome-'));
+    try {
+      const mod = await import(`../scripts/activity.mjs?nohome=${Date.now()}`);
+      const a = mod.allSessions({ limit: 3 });
+      assert.deepEqual(Object.keys(a).sort(), ['activeCount', 'available', 'sessions', 'total']);
+      assert.equal(a.available, false);
+      assert.equal(a.activeCount, 0);
+      const o = mod.orgActivity();
+      assert.equal(typeof o.activeCount, 'number');
+      assert.deepEqual(o.events, []);
+      assert.deepEqual(o.busyAgents, []);
+    } finally {
+      process.env.HOME = realHome;
+    }
+  });
+});

@@ -30,6 +30,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse } from './yaml.mjs';
 import { files, readLedger, derive } from './ledger.mjs';
+import { waiting } from './mailbox.mjs';
 
 const readLedgerFor = (cwd) => readLedger(cwd);
 
@@ -375,6 +376,18 @@ export const briefing = (org, cwd = process.cwd()) => {
   if (notable.length) {
     lines.push('MEASURED HERE:');
     for (const [n, m] of notable) lines.push(`  - ${n} ${m.reliability} over ${m.n} observations`);
+  }
+
+  // The mailbox outranks everything else here: an unanswered message from the Principal is
+  // the one thing a session must not start without knowing. It also bypasses the
+  // nothing-known silence rule below — mail is mail even in a workspace with no history.
+  const mail = waiting(cwd).slice(0, 5);
+  if (mail.length) {
+    lines.push('MESSAGES FROM THE PRINCIPAL — waiting since the Console queued them:');
+    for (const m of mail) {
+      lines.push(`  - ${m.id} to ${m.to} [${m.kind}]: ${m.body.slice(0, 160)}${m.url ? ` (${m.url})` : ''}`);
+    }
+    lines.push('  Have the addressed agent act, then record the answer: forge reply <id> --as <agent> "..."');
   }
 
   if (!lines.length) return '';

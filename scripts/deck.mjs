@@ -24,11 +24,12 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { load, ROOT, resolveContract } from './core.mjs';
+import { load, ROOT, resolveContract, registerWorkspace, listWorkspaces } from './core.mjs';
 import { composeVector } from './vector.mjs';
 import { readLedger, derive, files } from './ledger.mjs';
 import { profileWorkspace, loadOverlay, propose, applyProposal } from './learn.mjs';
 import { runDoctor } from './doctor.mjs';
+import * as mailbox from './mailbox.mjs';
 
 const DECK = path.join(ROOT, 'deck');
 
@@ -153,6 +154,62 @@ export const statePayload = (org, cwd = process.cwd()) => {
   };
 };
 
+/** Token spend rolled up by division and agent. Derived; an empty ledger is an empty report. */
+export const tokensPayload = (org, cwd = process.cwd()) => {
+  const rows = readLedger(cwd).filter((r) => r.agent);
+  const byAgent = {};
+  for (const r of rows) {
+    const a = (byAgent[r.agent] ??= { tokens: 0, tasks: 0 });
+    a.tokens += r.tokens || 0;
+    a.tasks += 1;
+  }
+  const byDivision = {};
+  for (const [name, v] of Object.entries(byAgent)) {
+    const agent = org.byName.get(name);
+    const div = agent ? org.constitution.divisions.find((d) => d.id === agent.division)?.name : 'unknown';
+    const d = (byDivision[div] ??= { tokens: 0, tasks: 0 });
+    d.tokens += v.tokens;
+    d.tasks += v.tasks;
+  }
+  return { total: rows.reduce((n, r) => n + (r.tokens || 0), 0), tasks: rows.length, byAgent, byDivision };
+};
+
+/**
+ * Rewards — Workforce Health's recognition, DERIVED from the ledger rather than stored.
+ *
+ * The reward the organization actually pays is routing preference: measured reliability
+ * feeds the scorer, so a dependable agent literally gets more work. What this adds is the
+ * legible layer on top — streaks and improvement, computed fresh from the same rows. A
+ * stored "motivation" score would drift from the evidence and become the gameable number
+ * the constitution's reward article warns about.
+ */
+export const rewardsPayload = (cwd = process.cwd()) => {
+  const rows = readLedger(cwd).filter((r) => r.agent && ['ok', 'partial', 'fail'].includes(r.outcome));
+  const perAgent = {};
+  for (const r of rows) (perAgent[r.agent] ??= []).push(r.outcome);
+  const streaks = [];
+  const improved = [];
+  for (const [agent, seq] of Object.entries(perAgent)) {
+    let streak = 0;
+    for (let i = seq.length - 1; i >= 0 && seq[i] === 'ok'; i -= 1) streak += 1;
+    if (streak >= 2) streaks.push({ agent, streak });
+    if (seq.length >= 4) {
+      const rate = (xs) => xs.filter((o) => o === 'ok').length / xs.length;
+      const half = Math.floor(seq.length / 2);
+      const delta = rate(seq.slice(half)) - rate(seq.slice(0, half));
+      if (delta >= 0.25) improved.push({ agent, delta: Number(delta.toFixed(2)) });
+    }
+  }
+  streaks.sort((a, b) => b.streak - a.streak);
+  improved.sort((a, b) => b.delta - a.delta);
+  const d = derive(readLedger(cwd));
+  const reliable = Object.entries(d.memory)
+    .filter(([, m]) => m.n >= 3 && m.reliability >= 0.75)
+    .sort((a, b) => b[1].reliability - a[1].reliability)
+    .map(([agent, m]) => ({ agent, reliability: m.reliability, n: m.n }));
+  return { streaks: streaks.slice(0, 5), improved: improved.slice(0, 5), reliable: reliable.slice(0, 5) };
+};
+
 const json = (res, body, code = 200) => {
   const s = JSON.stringify(body);
   res.writeHead(code, { 'content-type': MIME['.json'], 'content-length': Buffer.byteLength(s), 'cache-control': 'no-store' });
@@ -179,7 +236,9 @@ const readBody = (req) =>
 
 /** Serve one static file from deck/, and nothing outside it. */
 const serveStatic = (urlPath, res) => {
-  const rel = urlPath === '/' ? 'index.html' : urlPath.replace(/^\//, '');
+  // '/' is the Principal's Console — warm, sparse, non-technical. The dense instrument
+  // panel lives on at /ops for anyone who wants every number on one screen.
+  const rel = urlPath === '/' ? 'console.html' : urlPath === '/ops' ? 'ops.html' : urlPath.replace(/^\//, '');
   const full = path.join(DECK, rel);
   // Resolve first, then check the prefix. Checking the raw string lets "..%2f" through on
   // some clients; checking the resolved path cannot be fooled by encoding.
@@ -198,6 +257,7 @@ const serveStatic = (urlPath, res) => {
 
 export const createDeck = ({ cwd = process.cwd() } = {}) => {
   const org = load();
+  registerWorkspace(cwd); // the Console's Sessions view is fed by exactly this
   const clients = new Set();
 
   // Push on change rather than making the browser poll. fs.watch is best-effort across
@@ -221,9 +281,20 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
     const url = new URL(req.url, 'http://localhost');
     const p = url.pathname;
 
+    // ?ws= switches which SESSION an API call reads — but only to a workspace the CLI has
+    // actually convened in. The registry is the allowlist; without it this parameter would
+    // be an invitation to read any directory the process can.
+    const wsParam = url.searchParams.get('ws');
+    let wcwd = cwd;
+    if (wsParam) {
+      const known = listWorkspaces().some((w) => w.path === path.resolve(wsParam));
+      if (!known) return json(res, { error: 'not a registered workspace — run a forge command there first' }, 403);
+      wcwd = path.resolve(wsParam);
+    }
+
     try {
       if (p === '/api/org') return json(res, orgPayload(org));
-      if (p === '/api/state') return json(res, statePayload(org, cwd));
+      if (p === '/api/state') return json(res, statePayload(org, wcwd));
 
       if (p === '/api/doctor') {
         const r = runDoctor(org);
@@ -234,16 +305,16 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
         const body = await readBody(req);
         const request = String(body.request || '').slice(0, 2000);
         if (!request.trim()) return json(res, { error: 'a plan needs a request' }, 400);
-        const memory = derive(readLedger(cwd)).memory;
+        const memory = derive(readLedger(wcwd)).memory;
         const mode = ['direct', 'focused', 'standard', 'campaign'].includes(body.mode) ? body.mode : null;
         return json(res, composeVector(request, org, { memory, mode }));
       }
 
       if (p === '/api/learn' && req.method === 'POST') {
-        const rows = readLedger(cwd);
-        const profile = profileWorkspace(cwd);
+        const rows = readLedger(wcwd);
+        const profile = profileWorkspace(wcwd);
         const result = propose(org, { rows, profile });
-        const f = files(cwd);
+        const f = files(wcwd);
         fs.mkdirSync(f.dir, { recursive: true });
         fs.writeFileSync(f.proposals, `${JSON.stringify(result.proposals, null, 2)}\n`);
         return json(res, result);
@@ -252,14 +323,32 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
       if (p === '/api/approve' && req.method === 'POST') {
         // The single write the deck performs, and it is the one the Principal exists for.
         const body = await readBody(req);
-        const f = files(cwd);
+        const f = files(wcwd);
         if (!fs.existsSync(f.proposals)) return json(res, { error: 'no proposals; run learn first' }, 400);
         const proposals = JSON.parse(fs.readFileSync(f.proposals, 'utf8'));
         const proposal = proposals.find((x) => x.id === body.id);
         if (!proposal) return json(res, { error: `no proposal ${body.id}` }, 404);
         if (proposal.refused) return json(res, { error: proposal.refused }, 400);
-        applyProposal(proposal, cwd);
+        applyProposal(proposal, wcwd);
         return json(res, { applied: proposal.id });
+      }
+
+      if (p === '/api/messages' && req.method === 'GET') {
+        return json(res, { threads: mailbox.threads(wcwd), waiting: mailbox.waiting(wcwd).length });
+      }
+      if (p === '/api/messages' && req.method === 'POST') {
+        // The one other write the Console performs, and it is mail, not dispatch.
+        const body = await readBody(req);
+        try {
+          return json(res, mailbox.post({ to: body.to, body: body.body, kind: body.kind, url: body.url }, org, wcwd));
+        } catch (e) {
+          return json(res, { error: e.message }, 400);
+        }
+      }
+      if (p === '/api/tokens') return json(res, tokensPayload(org, wcwd));
+      if (p === '/api/rewards') return json(res, rewardsPayload(wcwd));
+      if (p === '/api/workspaces') {
+        return json(res, { current: cwd, viewing: wcwd, workspaces: listWorkspaces() });
       }
 
       if (p === '/api/events') {

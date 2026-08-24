@@ -11,6 +11,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parse } from './yaml.mjs';
 
@@ -29,6 +30,39 @@ export const paths = {
 
 /** Where the organization keeps what it has learned about ONE workspace. */
 export const workspaceDir = (cwd = process.cwd()) => path.join(cwd, '.forge');
+
+/**
+ * The workspace registry — every place the organization has convened.
+ *
+ * Lives in the home directory, not in any one workspace, because its whole job is to let
+ * the Console list SESSIONS across workspaces. Written by the CLI, never by the evolution
+ * layer; it is a bookmark file, not learned state, and it is also the allowlist the deck
+ * checks a ?ws= parameter against — an unregistered path is refused, so the HTTP surface
+ * can never be talked into reading an arbitrary directory.
+ */
+const registryPath = () => path.join(os.homedir(), '.claude', 'forge-workspaces.json');
+
+export const registerWorkspace = (cwd = process.cwd()) => {
+  try {
+    const p = registryPath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    const list = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : [];
+    const abs = path.resolve(cwd);
+    const rest = list.filter((w) => w.path !== abs);
+    rest.unshift({ path: abs, lastSeen: new Date().toISOString() });
+    fs.writeFileSync(p, `${JSON.stringify(rest.slice(0, 20), null, 2)}\n`);
+  } catch {
+    /* a broken bookmark file must never break the command that tried to write it */
+  }
+};
+
+export const listWorkspaces = () => {
+  try {
+    return JSON.parse(fs.readFileSync(registryPath(), 'utf8')).filter((w) => fs.existsSync(w.path));
+  } catch {
+    return [];
+  }
+};
 
 const readYaml = (p) => parse(fs.readFileSync(p, 'utf8'));
 

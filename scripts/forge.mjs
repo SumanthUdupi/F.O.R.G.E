@@ -12,7 +12,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { load, ui, ROOT } from './core.mjs';
+import { load, ui, ROOT, registerWorkspace } from './core.mjs';
 import { composeVector, renderVector } from './vector.mjs';
 import { runDoctor } from './doctor.mjs';
 import { build } from './render.mjs';
@@ -32,6 +32,7 @@ import { profileWorkspace, renderProfile, propose, applyProposal, loadOverlay, b
 import { install } from './install.mjs';
 import { charterDoc } from './charter-doc.mjs';
 import { startDeck } from './deck.mjs';
+import * as mailbox from './mailbox.mjs';
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -66,6 +67,10 @@ F.O.R.G.E. — Foundry for Organized Reasoning, Governance and Evolution
                                 zero dependencies, reads this workspace's .forge/
   forge context                 the session briefing: what this workspace has taught the
                                 organization. Prints nothing when nothing is known.
+
+  forge inbox                   messages from the Principal waiting for an answer
+  forge reply <id> --as <agent> "text"
+                                answer one, as the agent that owns the question
 
   forge observe --agent <n> --capability <c> --outcome ok|partial|fail|blocked
       [--correction "..."] [--tokens N] [--campaign id]
@@ -221,7 +226,38 @@ switch (cmd) {
     break;
   }
 
+  case 'inbox': {
+    const w = mailbox.waiting(process.cwd());
+    if (!w.length) {
+      console.log('\n  nothing waiting. The Principal has been answered.\n');
+      break;
+    }
+    console.log(ui.head('INBOX — the Principal is waiting'));
+    for (const m of w) {
+      console.log(`\n  ${m.id}  [${m.kind}]  to ${m.to}  ·  ${m.at.slice(0, 16).replace('T', ' ')}`);
+      console.log(`      ${m.body}${m.url ? `\n      ${m.url}` : ''}`);
+    }
+    console.log(`\n  answer with: forge reply <id> --as <agent-name> "the answer"\n`);
+    break;
+  }
+
+  case 'reply': {
+    const o = org();
+    const re = positional()[0];
+    const from = flag('as');
+    const text = positional().slice(1).join(' ');
+    if (!re || !from || !text) die('usage: forge reply <id> --as <agent-name> "the answer"');
+    try {
+      const row = mailbox.reply({ re, from: String(from), body: text }, o, process.cwd());
+      console.log(`\n  ${row.from} answered ${re}. The Console shows it immediately.\n`);
+    } catch (e) {
+      die(e.message);
+    }
+    break;
+  }
+
   case 'observe': {
+    registerWorkspace(process.cwd());
     const o = org();
     const agent = flag('agent');
     if (!agent) die('observe needs --agent');
@@ -265,6 +301,7 @@ switch (cmd) {
   }
 
   case 'learn': {
+    registerWorkspace(process.cwd());
     const o = org();
     const rows = readLedger();
     const profile = profileWorkspace();

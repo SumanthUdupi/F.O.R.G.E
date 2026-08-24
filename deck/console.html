@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F.O.R.G.E. Console</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1l9.5 5.5v11L12 23 2.5 17.5v-11z' fill='%230D8EA3'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/console.css">
+</head>
+<body>
+<div id="app">
+  <nav class="rail" aria-label="Console">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <span><b>F.O.R.G.E.</b><small id="ws-name">your organization</small></span>
+    </div>
+    <button class="nav" data-view="home">Home<span class="count" id="c-home"></span></button>
+    <button class="nav" data-view="chat">Chat<span class="count" id="c-chat"></span></button>
+    <button class="nav" data-view="ideas">Ideas</button>
+    <button class="nav" data-view="repos">Repos to study</button>
+    <button class="nav" data-view="team">The team</button>
+    <button class="nav" data-view="spend">Spending</button>
+    <button class="nav" data-view="sessions">Sessions</button>
+    <div class="foot"><a href="/ops" title="The dense technical view — every number on one screen">Ops console →</a></div>
+  </nav>
+  <main class="stage"><div class="wrap" id="stage"><p class="empty">One moment…</p></div></main>
+</div>
+<script type="module" src="/console.js"></script>
+</body>
+</html>

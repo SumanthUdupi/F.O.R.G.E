@@ -113,46 +113,34 @@ RUNNERS-UP  who else could have taken each stage
 **Deterministic and model-free.** Same request, same plan, every time. A wrong route is a
 diff against `registry/routing.yaml`, not an argument with a model.
 
-## The Command Deck
+## Two rooms: the Console and the Ops deck
 
 ```bash
 forge deck        # http://127.0.0.1:7717
 ```
 
-A live operations view of the organization: the division map, the Vector you are about to
-run, who is measurably good at what, and the proposals waiting on you. Zero dependencies —
-Node's own `http` module and three hand-written files, so it works on a fresh clone with no
-install step and no network.
+**`/` is the Console** — warm paper, plain words, one decision per card. Built for a
+Principal who never wants to see a JSON key. **`/ops` is the instrument panel** — the dark,
+dense Industrial Sapphire deck with every number on one screen. Same server, same zero
+dependencies, loopback only.
 
-**Loopback only.** It reads your ledger and workspace profile and has no authentication,
-because it has no remote.
-
-| View | What it answers |
+| Console view | What it does |
 |---|---|
-| **Command Deck** | Twelve hexagonal divisions grouped by the seat that owns them. Colour is state — cyan active, amber blocked, magma failing, steel idle. A triangle marks a division that may halt a campaign. |
-| **Campaign Vector** | Compose a plan and watch it resolve into a chevron chain, batch by batch, with every gate as an unmissable card. |
-| **The Board** | Six seats, each with its portfolio, its stance, what it **refuses**, and what it **objects to**. |
-| **Roster** | All 64 agents, filterable by capability or responsibility, each showing its resolved output contract. |
-| **Learning** | Proposals with their evidence grade and an Approve button. Measured reliability per agent. Corrections. What is currently in force here. |
-| **Charter · Audit** | The twelve rules with the check that enforces each, and the live constitutional audit. |
+| **Home** | A greeting, what needs your decision (with an Approve button), new answers, and what happened lately — in sentences, not rows. |
+| **Chat** | Write to any seat, manager or specialist. Honest delivery model: messages are queued, handed to the organization by the session briefing when it next convenes, and answered with `forge reply`. Mail, not a spinner pretending to be chat. |
+| **Ideas** | One textarea, straight to the Discovery Lab, answers threaded underneath. |
+| **Repos to study** | Paste a GitHub link and what you want from it. The Lab reverse-engineers it and reports back before anything is copied in. |
+| **The team** | The six seats and their departments with live status dots — plus Recognition, derived from real outcomes (streaks, most improved, most dependable), so it can be earned and never granted. |
+| **Spending** | Token burn attributed by department and agent. An empty ledger shows an honest zero, not an invented chart. |
+| **Sessions** | Every workspace the organization has convened in, switchable from one screen. `?ws=` is validated against that registry, so the HTTP surface can never be pointed at an arbitrary directory. |
 
-Every view deep-links: `?view=learning`, `?view=vector&request=...`, `?live=0` to freeze it
-for a screenshot.
-
-### Wire it into every session
-
-Two hooks in `~/.claude/settings.json` make the organization engage without being asked:
-
-```jsonc
-"UserPromptSubmit"  // the routing gate — invoke forge before self-routing anything non-trivial
-"SessionStart"      // forge context — inject what this workspace has taught the organization
-```
-
-`forge context` prints **nothing** for a workspace it knows nothing about, so a fresh
-repository costs zero tokens. It only speaks once there is graded evidence, an approved
-adaptation, or an agent whose measured reliability would change a routing decision.
+The mailbox is one append-only file with three lenses — a chat message, an idea and a repo
+intake are the same row with a different `kind`. Unanswered mail rides the session
+briefing, which means delivery is guaranteed by the same mechanism that already starts
+every session, and an answered message is never re-delivered.
 
 ### It is not a second way to start work
+
 
 The deck shows what the organization knows and lets you approve a proposal. It does not
 dispatch agents — that belongs to the host runtime, and a second thing that can start work
@@ -229,7 +217,7 @@ manager anyway is exactly the drift it exists to catch.
 
 ```bash
 node scripts/forge.mjs doctor    # 12 constitutional rules + 6 hygiene checks
-node --test tests/*.test.mjs     # 133 tests
+node --test tests/*.test.mjs     # 146 tests
 ```
 
 ```
@@ -267,8 +255,8 @@ registry/routing.yaml       28 rules, 4 effort modes, the scoring weights
 registry/contracts.yaml     output contracts, composed once, inherited by all 64
 agents/*.md                 BUILD OUTPUT. edit the registry, run `forge build --apply`
 scripts/                    yaml · core · router · vector · ledger · learn · doctor · render · deck
-deck/                       the Command Deck — one page, one stylesheet, one client
-tests/                      133 tests, node:test, zero dependencies
+deck/                       the Console (for the Principal) and the Ops deck (for instruments)
+tests/                      146 tests, node:test, zero dependencies
 ```
 
 ## Commands
@@ -285,7 +273,8 @@ tests/                      133 tests, node:test, zero dependencies
 | `forge evolve --apply <id>` | approve one. the only way anything changes |
 | `forge build --apply` | regenerate `agents/` from the registry |
 | `forge install --apply` | install into `~/.claude` |
-| `forge deck` | the Command Deck, on loopback |
+| `forge deck` | the Console + Ops deck, on loopback |
+| `forge inbox` / `forge reply` | mail from the Principal, and how the org answers it |
 | `forge context` | the session briefing — silent when nothing is known |
 
 ## Lineage

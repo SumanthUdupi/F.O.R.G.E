@@ -119,7 +119,8 @@ export const installHooks = ({ root = home(), forgeHome = ROOT } = {}) => {
   if (!fs.existsSync(path.join(resolved, 'scripts', 'forge.mjs'))) {
     throw new Error(`refusing: ${resolved} does not contain scripts/forge.mjs`);
   }
-  if (/^(\/private)?\/tmp\//.test(resolved) || /\/T\//.test(resolved)) {
+  const tmpRoot = path.resolve(os.tmpdir());
+  if (resolved === tmpRoot || resolved.startsWith(tmpRoot + path.sep) || /^(\/private)?\/tmp\//.test(resolved) || resolved.includes('/var/folders/')) {
     throw new Error(`refusing: ${resolved} is a temporary directory — hooks would outlive it`);
   }
   const file = path.join(root, 'settings.json');

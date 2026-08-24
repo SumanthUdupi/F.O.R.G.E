@@ -49,7 +49,12 @@ export const registerWorkspace = (cwd = process.cwd()) => {
     // locations are not places the organization has worked; they are places it was
     // exercised — the same distinction the hook installer already enforces.
     const abs0 = path.resolve(cwd);
-    if (/^(\/private)?\/tmp\//.test(abs0) || abs0.includes('/var/folders/') || /\/T\//.test(abs0)) return;
+    // Portable disposability check: anything under the OS temp root, on any platform.
+    // The first version pattern-matched /tmp and /var/folders, which is Unix-shaped —
+    // Windows temp lives in AppData\Local\Temp and sailed straight through in CI.
+    const tmpRoot = path.resolve(os.tmpdir());
+    if (abs0 === tmpRoot || abs0.startsWith(tmpRoot + path.sep)) return;
+    if (/^(\/private)?\/tmp\//.test(abs0) || abs0.includes('/var/folders/')) return;
     const p = registryPath();
     fs.mkdirSync(path.dirname(p), { recursive: true });
     const list = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : [];

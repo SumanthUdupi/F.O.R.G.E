@@ -30,6 +30,7 @@ import { readLedger, derive, files, measuredSpend, estimateStages, listSessions 
 import { profileWorkspace, loadOverlay, propose, applyProposal } from './learn.mjs';
 import { runDoctor } from './doctor.mjs';
 import * as mailbox from './mailbox.mjs';
+import { startRun, getRun, killRun, activeRuns } from './runner.mjs';
 
 const DECK = path.join(ROOT, 'deck');
 
@@ -365,6 +366,49 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
         }
       }
       if (p === '/api/tokens') return json(res, tokensPayload(org, wcwd));
+
+      if (p === '/api/run' && req.method === 'POST') {
+        // The Principal's send button. The message is filed as mail FIRST, so if the deck
+        // dies mid-run the thread still exists and the next session still sees it — the
+        // live run is an accelerant on the mailbox, never a replacement for it.
+        const body = await readBody(req);
+        const mode = body.mode === 'do' ? 'do' : 'ask';
+        let root;
+        try {
+          root = mailbox.post({ to: body.to, body: body.body, kind: 'message' }, org, wcwd);
+        } catch (e) {
+          return json(res, { error: e.message }, 400);
+        }
+        const threadId = body.threadId || root.id;
+        const r = startRun(
+          { to: body.to, body: body.body, mode, threadId },
+          {
+            cwd: wcwd,
+            onEvent: (ev) => {
+              for (const c of clients) c.write(`event: run\ndata: ${JSON.stringify(ev)}\n\n`);
+            },
+            onDone: (run) => {
+              try {
+                const answer = run.text?.trim() || `The run ended with status ${run.status} and no answer.`;
+                mailbox.reply({ re: root.id, from: 'desk-manager', body: answer.slice(0, 4000) }, org, wcwd);
+              } catch { /* the run record still exists in memory */ }
+              for (const c of clients) c.write('event: dirty\ndata: {}\n\n');
+            },
+          },
+        );
+        if (r.error) return json(res, { error: `could not start claude: ${r.error}` }, 500);
+        return json(res, { runId: r.id, threadId: root.id, mode });
+      }
+
+      if (p === '/api/run' && req.method === 'GET') {
+        const r = getRun(url.searchParams.get('id'));
+        return r ? json(res, r) : json(res, { error: 'no such run' }, 404);
+      }
+      if (p === '/api/run/kill' && req.method === 'POST') {
+        const body = await readBody(req);
+        return json(res, { killed: killRun(body.id) });
+      }
+      if (p === '/api/runs') return json(res, { active: activeRuns() });
 
       if (p === '/api/rewards') return json(res, rewardsPayload(wcwd));
 

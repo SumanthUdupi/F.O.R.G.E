@@ -13,7 +13,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 const state = {
   org: null, live: null, mail: null, tokens: null, rewards: null, wsinfo: null, sessions: null,
-  view: 'home', ws: null, recipient: 'chair', draft: {},
+  view: 'home', ws: null, recipient: 'chair', draft: {}, mode: 'ask', run: null,
 };
 
 const qs = () => (state.ws ? `?ws=${encodeURIComponent(state.ws)}` : '');
@@ -148,10 +148,18 @@ const viewChat = () => {
         </select>
       </div>
       <div class="thread">${thread}</div>
+      ${state.run ? `<div class="msgrow">${avatar('the organization')}<div class="msg theirs live"><div class="who">the organization · working<span class="workdots"></span></div>${esc(state.run.text || '')}${state.run.tool ? `<div class="toolline">using ${esc(state.run.tool)}…</div>` : ''}</div></div><p class="pendingnote"><button class="go quiet" id="runkill">Stop this run</button></p>` : ''}
       <div class="field" style="margin-top:16px"><label for="chatbody">Your message</label>
         <textarea id="chatbody" placeholder="Write it the way you'd say it. No format required.">${esc(state.draft[state.recipient] || '')}</textarea>
       </div>
-      <div style="margin-top:12px;display:flex;align-items:center;gap:12px"><button class="go" id="chatsend">Send</button><span class="hint" style="margin:0">⌘↵ sends · drafts survive view changes and refreshes</span></div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="modeswitch" role="radiogroup" aria-label="What kind of message">
+          <button class="modeopt ${state.mode !== 'do' ? 'on' : ''}" data-mode="ask" title="The organization reads and answers. It cannot change files.">Ask</button>
+          <button class="modeopt ${state.mode === 'do' ? 'on' : ''}" data-mode="do" title="A work order: it may edit files in this workspace. Its seven gates still hold.">Do</button>
+        </span>
+        <button class="go" id="chatsend"${state.run ? ' disabled' : ''}>${state.run ? 'Working…' : 'Send'}</button>
+        <span class="hint" style="margin:0">${state.mode === 'do' ? 'Do = a live work order in this workspace — watch it stream.' : 'Ask = answers only, nothing changes.'} ⌘↵ sends.</span>
+      </div>
     </div>`;
 };
 
@@ -492,7 +500,26 @@ document.addEventListener('click', async (e) => {
   }
   if (e.target.id === 'chatsend') {
     const v = $('#chatbody').value.trim();
-    if (v) { state.draft[state.recipient] = ''; await send({ to: state.recipient, body: v }); }
+    if (!v || state.run) return;
+    state.draft[state.recipient] = '';
+    // Continue the newest thread with this recipient so the run resumes one conversation.
+    const prior = ((state.mail && state.mail.threads) || []).find((t) => t.to === state.recipient && t.kind === 'message');
+    try {
+      const r = await api('/api/run', { to: state.recipient, body: v, mode: state.mode, threadId: prior ? prior.id : null });
+      state.run = { id: r.runId, text: '', tool: null };
+    } catch (err) {
+      alert(err.message);
+    }
+    await refresh();
+    return;
+  }
+  if (e.target.closest('.modeopt')) {
+    state.mode = e.target.closest('.modeopt').dataset.mode;
+    render();
+    return;
+  }
+  if (e.target.id === 'runkill') {
+    if (state.run) await api('/api/run/kill', { id: state.run.id });
     return;
   }
   if (e.target.id === 'ideasend') {
@@ -548,6 +575,14 @@ const LIVE = new URLSearchParams(location.search).get('live') !== '0';
     try {
       const src = new EventSource('/api/events');
       src.addEventListener('dirty', () => refresh({ passive: true }));
+      src.addEventListener('run', (e) => {
+        const ev = JSON.parse(e.data);
+        if (!state.run || ev.runId !== state.run.id) return;
+        if (ev.kind === 'text') { state.run.text = (state.run.text ? state.run.text + '\n\n' : '') + ev.text; state.run.tool = null; }
+        if (ev.kind === 'tool') state.run.tool = ev.name;
+        if (ev.kind === 'status') { state.run = null; refresh(); return; }
+        if (state.view === 'chat' && !typingNow()) render();
+      });
     } catch { /* the timer below still covers it */ }
     setInterval(() => refresh({ passive: true }), 12000);
   }

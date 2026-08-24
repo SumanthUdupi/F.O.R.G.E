@@ -133,7 +133,7 @@ of all at once. Zero dependencies, loopback only.
 | Console view | What it does |
 |---|---|
 | **Home** | A greeting, what needs your decision (with an Approve button), new answers, and what happened lately — in sentences, not rows. |
-| **Chat** | Write to any seat, manager or specialist. Honest delivery model: messages are queued, handed to the organization by the session briefing when it next convenes, and answered with `forge reply`. Mail, not a spinner pretending to be chat. |
+| **Chat** | Write to any seat, manager or specialist — and choose **Ask** (answers only, plan mode, cannot write) or **Do** (a live work order: the Console spawns Claude Code headlessly in the workspace, streams the run into the thread, and files the answer as a reply). Your auth, hooks and gates all apply, because it *is* Claude Code underneath. No runtime available? The message queues as mail and the next session delivers it — the thread reads the same either way. |
 | **Ideas** | One textarea, straight to the Discovery Lab, answers threaded underneath. |
 | **Repos to study** | Paste a GitHub link and what you want from it. The Lab reverse-engineers it and reports back before anything is copied in. |
 | **Plans** | Type what you want; see who would work on it, in what order, where it pauses for you — and what it should roughly cost, estimated from this workspace's own measured history. No history, no number: an invented estimate is worse than none. |
@@ -224,7 +224,7 @@ manager anyway is exactly the drift it exists to catch.
 
 ```bash
 node scripts/forge.mjs doctor    # 12 constitutional rules + 6 hygiene checks
-node --test tests/*.test.mjs     # 158 tests
+node --test tests/*.test.mjs     # 163 tests
 ```
 
 ```
@@ -263,7 +263,7 @@ registry/contracts.yaml     output contracts, composed once, inherited by all 64
 agents/*.md                 BUILD OUTPUT. edit the registry, run `forge build --apply`
 scripts/                    yaml · core · router · vector · ledger · learn · doctor · render · deck
 deck/                       the Console — the only surface
-tests/                      158 tests, node:test, zero dependencies
+tests/                      163 tests, node:test, zero dependencies
 ```
 
 ## Commands

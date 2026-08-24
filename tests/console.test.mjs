@@ -248,3 +248,71 @@ describe('sessions are sittings, not places', () => {
     assert.equal(listWorkspaces().length, before, 'a temp directory was registered as a place the org worked');
   });
 });
+
+describe('the Console dispatches Claude Code itself — with a stub runtime under test', () => {
+  // FORGE_CLAUDE_BIN points at a script speaking just enough stream-json. The tests prove
+  // the BRIDGE — spawn, stream, permission flag, mailbox reply — without burning a real
+  // session; one real smoke run happens outside the suite.
+  let deck2;
+  let base2;
+  let ws2;
+  before(async () => {
+    ws2 = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-run-'));
+    process.env.FORGE_CLAUDE_BIN = path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures', 'claude-stub.sh');
+    deck2 = await startDeck({ port: 0, cwd: ws2 });
+    base2 = `http://127.0.0.1:${deck2.port}`;
+  });
+  after(() => {
+    delete process.env.FORGE_CLAUDE_BIN;
+    deck2 && deck2.close();
+  });
+  const post2 = async (p, body) => {
+    const res = await fetch(base2 + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: res.status, json: await res.json() };
+  };
+
+  test('a Do send runs to completion and files the answer as a reply in the thread', async () => {
+    const r = await post2('/api/run', { to: 'chair', body: 'probe the bridge', mode: 'do' });
+    assert.equal(r.status, 200);
+    assert.ok(r.json.runId);
+    // wait for the mailbox reply — the durable record, not the in-memory run
+    let thread;
+    for (let i = 0; i < 40; i += 1) {
+      const list = JSON.parse(await (await fetch(`${base2}/api/messages`)).text());
+      thread = list.threads.find((t) => t.body === 'probe the bridge');
+      if (thread?.answered) break;
+      await new Promise((res2) => setTimeout(res2, 100));
+    }
+    assert.ok(thread?.answered, 'the run never filed its reply');
+    assert.match(thread.replies[0].body, /acceptEdits/, 'Do mode did not reach the runtime as acceptEdits');
+    assert.equal(thread.replies[0].from, 'desk-manager');
+  });
+
+  test('Ask mode reaches the runtime as plan — reads only, enforced not requested', async () => {
+    await post2('/api/run', { to: 'qa-manager', body: 'ask-mode probe', mode: 'ask' });
+    let thread;
+    for (let i = 0; i < 40; i += 1) {
+      const list = JSON.parse(await (await fetch(`${base2}/api/messages`)).text());
+      thread = list.threads.find((t) => t.body === 'ask-mode probe');
+      if (thread?.answered) break;
+      await new Promise((res2) => setTimeout(res2, 100));
+    }
+    assert.match(thread.replies[0].body, /plan/, 'Ask mode did not reach the runtime as plan');
+  });
+
+  test('the thread remembers its Claude session, so the next send resumes it', async () => {
+    const { sessionForThread } = await import('../scripts/runner.mjs');
+    const list = JSON.parse(await (await fetch(`${base2}/api/messages`)).text());
+    const thread = list.threads.find((t) => t.body === 'probe the bridge');
+    assert.equal(sessionForThread(thread.id, ws2), 'stub-session-123');
+  });
+
+  test('an invalid recipient is refused before anything spawns', async () => {
+    assert.equal((await post2('/api/run', { to: 'nobody', body: 'x', mode: 'ask' })).status, 400);
+  });
+
+  test('a dead run is a 404, not a hang', async () => {
+    const res = await fetch(`${base2}/api/run?id=R-nope`);
+    assert.equal(res.status, 404);
+  });
+});

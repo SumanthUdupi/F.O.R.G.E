@@ -1,0 +1,177 @@
+# Output contracts, defined once and inherited by all 64 agents.
+#
+# THE IMPROVEMENT THIS FILE IS
+#
+# The board specification this organization was designed from writes a bespoke output
+# contract under each of its six executives -- and gives none at all to the specialists who
+# do the actual work. That is backwards. The seats produce a handful of messages a
+# campaign; the specialists produce most of them, and they are the ones whose output has to
+# be machine-checkable.
+#
+# So contracts are composed here, not authored per agent:
+#
+#   base        every agent, always. Straight from the constitution's protocol block.
+#   by_role     what a board seat / manager / specialist additionally must state.
+#   by_family   what a REVIEWING agent must state that a BUILDING agent need not, etc.
+#
+# An agent's contract is base + its role + every family its capabilities fall into.
+# `forge build` renders the resolved contract into the agent file, and doctor fails any
+# agent whose resolved contract is missing a required field -- so a contract cannot be
+# declared here and quietly absent from the prompt, which is the defect that makes most
+# agent specifications decorative.
+
+base:
+  fields:
+    - key: STATUS
+      values: [SUCCESS, PARTIAL, BLOCKED, FAILED]
+      note: PARTIAL is not a softer SUCCESS. If anything is outstanding, it is PARTIAL.
+    - key: SUMMARY
+      note: One sentence. What changed, not what was attempted.
+    - key: EVIDENCE_GRADE
+      values: [EVIDENCE, INFERENCE, UNKNOWN]
+      note: Grades the summary. UNKNOWN is free; a wrong EVIDENCE costs the next three campaigns.
+    - key: ARTIFACTS
+      note: What now exists that did not. "none" is a valid and common answer.
+    - key: HANDOFF
+      note: What the next agent needs and does not already have. Not a recap.
+  when_applicable:
+    - key: OPEN_QUESTIONS
+      note: RULE 008. A question here is cheaper than a guess anywhere.
+    - key: RISKS
+    - key: FILES_CHANGED
+    - key: DEPENDENCIES
+    - key: ALTERNATIVES_REJECTED
+      note: RULE 009 and principle P6. What you did not do, and why.
+    - key: COST
+      note: Roughly what this stage consumed. Unattributed cost teaches nothing.
+  rules:
+    - Every required field appears, every time. An omitted field is a violation; "none" is an answer.
+    - Never report a verification that was not run.
+    - An objection must name what would satisfy it, or it is an opinion.
+
+by_role:
+  board:
+    fields:
+      - key: PORTFOLIO_IMPACT
+        note: Which of your divisions this touches. If none, you are outside your portfolio — say so.
+      - key: POSITION
+        values: [SUPPORT, OBJECT, ABSTAIN]
+        note: Your vote on the proposal in front of the board.
+      - key: DISSENT
+        note: If OBJECT — what specifically would change your position. An objection with no remedy does not count.
+      - key: ESCALATE
+        values: [YES, NO]
+        note: YES only for the list in the constitution. Routine disagreement is a board matter, not a Principal matter.
+    rules:
+      - You propose only inside your own portfolio. Outside it you may object, and nothing else.
+      - The Chair records; the Chair does not decide. Deadlock escalates.
+  manager:
+    fields:
+      - key: SELECTED
+        note: Which specialist, and the one-line reason.
+      - key: RUNNERS_UP
+        note: Who else could have taken it and why they did not. RULE 005 is unverifiable without this.
+      - key: LOAD
+        note: What else your division is holding right now.
+    rules:
+      - You route. You do not perform the task yourself — that is RULE 005 and doctor checks your toolset for it.
+      - Naming no runner-up means either the division has one option or you did not look.
+  specialist:
+    fields:
+      - key: OBJECTIVE
+        note: The task as you understood it, in your own words. A mismatch here is caught cheapest.
+      - key: VERIFICATION
+        note: What you actually ran or read, and its real output. Not what you expect it would say.
+    rules:
+      - Deliver the scope you were given. Anything adjacent is a proposal in OPEN_QUESTIONS, not a change.
+
+# Capability families. An agent joins a family if any of its capabilities is listed.
+by_family:
+  - name: review
+    capabilities: [review, security, performance, regression, a11y]
+    fields:
+      - key: FINDINGS
+        note: Each with a file, a line and a concrete failure scenario. No scenario, no finding.
+      - key: VERDICT
+        values: [ACCEPT, REVISE, BLOCK]
+      - key: NOT_REVIEWED
+        note: What you did not look at. A review with no stated boundary reads as total coverage.
+    rules:
+      - You write nothing. Findings only.
+      - BLOCK is available to Adversarial QA and stops the campaign. Use it for correctness, not for taste.
+  - name: build
+    capabilities: [backend, frontend, data, integration, ux, ci, observability]
+    fields:
+      - key: WRITE_SCOPE
+        note: The files you intend to touch, declared BEFORE you touch them, so collisions are caught by the manager.
+      - key: BEHAVIOUR_UNCHANGED
+        values: [YES, NO, NA]
+        note: For a refactor this must be YES, and VERIFICATION must show how you know.
+    rules:
+      - Match the surrounding code. Its conventions outrank your preferences.
+      - Do not reformat what you did not have to change.
+  - name: research
+    capabilities: [research, recall, benchmark, learn]
+    fields:
+      - key: SOURCES
+        note: Where each claim came from. A claim with no source is UNKNOWN, whatever it sounds like.
+      - key: SEARCHED_LOCALLY_FIRST
+        values: [YES, NO]
+        note: Principle P3. The Archives and the repository before anything external.
+      - key: CONTRADICTED
+        note: What you found that disagrees with the current plan or with a recorded lesson.
+    rules:
+      - Never cite a source you did not open.
+      - Separate what you verified from what you inferred, per claim, not per report.
+  - name: release
+    capabilities: [release, migrate, risk]
+    fields:
+      - key: ROLLBACK
+        note: The exact way back. "Revert the commit" only counts if nothing else changed with it.
+      - key: IRREVERSIBLE_STEPS
+        note: Every step with no undo. If the list is empty, say so explicitly.
+      - key: GATE
+        note: Which constitutional gate this crosses, or "none".
+    rules:
+      - The rollback is written before the action, never during.
+      - A gate with no matching approval is a hard stop, not a warning.
+  - name: knowledge
+    capabilities: [capture, index, decide]
+    fields:
+      - key: ENTRY
+        note: Problem, evidence, solution, when NOT to use. All four, or it is a note.
+      - key: CONFIDENCE
+        note: A number and what would raise it.
+      - key: SUPERSEDES
+        note: Which existing entry this replaces, if any. Two entries that disagree are worse than none.
+    rules:
+      - One card, one problem.
+      - A single occurrence is an observation. A pattern needs more than one.
+  - name: economics
+    capabilities: [cost]
+    fields:
+      - key: ATTRIBUTION
+        note: Cost by stage and agent. An unattributed total is a rumour.
+      - key: VALUE_STATED
+        note: What the spend bought, in the terms the Principal used when asking.
+    rules:
+      - Never recommend a cheaper agent for a stage that crosses a gate.
+  - name: workforce
+    capabilities: [health, recruit, train, rollback]
+    fields:
+      - key: OBSERVATIONS
+        note: How many, over what period. A trend from two data points is a coincidence.
+      - key: REVERSIBLE
+        values: [YES, NO]
+        note: Article 38. Any roster change that cannot be withdrawn is refused.
+    rules:
+      - Propose. Never apply. The Principal approves every roster change.
+  - name: planning
+    capabilities: [plan, decompose, route, requirements, acceptance, prioritise, escalate, replan, report, architecture, data-model, design-system, browser, test]
+    fields:
+      - key: DONE_CONDITION
+        note: How anyone will know this is finished. If you cannot write it, that is the blocker.
+      - key: ASSUMPTIONS
+        note: What you decided on the Principal's behalf. Silence here is the expensive kind.
+    rules:
+      - Ambiguity that would change the work is a question. Ambiguity that would not is a decision — make it and record it.

@@ -1,0 +1,275 @@
+# Routing policy. Read by `forge plan`, which is deterministic and model-free.
+#
+# WHY DETERMINISTIC
+#
+# A router that asks a model which agents to convene has to be re-run to be explained, and
+# it answers differently the second time. This one is a pure function of the request text,
+# the roster and this file. `forge plan "<request>"` prints the same Vector twice, and the
+# rules that fired are listed in the output, so a wrong route is a diff against this file
+# rather than an argument with a model.
+#
+# WHAT ADAPTS
+#
+# The rules are the Principal's. The WEIGHTS are the organization's: `forge learn` adjusts
+# per-agent reliability from measured outcomes, and the routing score multiplies capability
+# match by that reliability. So the shape of a plan is stable and auditable while the choice
+# of specialist inside a capability improves with use. Nothing here is edited by the
+# evolution layer -- see docs/EVOLUTION.md for exactly which files it may touch.
+
+# Article 144. Configurable weights, none of them alone decisive (Article 145).
+score:
+  capability_match: 0.45
+  reliability: 0.25
+  recent_success_on_class: 0.15
+  cost_efficiency: 0.10
+  availability: 0.05
+
+# Article 146. A specialist that has just failed this class of work is not the obvious
+# choice for the retry, whatever its lifetime average says.
+failure_penalty:
+  consecutive_failures_on_class: 0.30
+  floor: 0.20
+
+# Effort modes. Selected from the request; an explicit instruction from the Principal wins.
+modes:
+  direct:
+    for: A question, a lookup, a one-line edit.
+    max_stages: 0
+    max_agents: 0
+    gates: []
+    note: Convening the organization for a typo costs more than the typo.
+  focused:
+    for: One well-understood change in one place.
+    max_stages: 5
+    max_agents: 5
+    gates: [verify]
+  standard:
+    for: Normal development across a few files.
+    max_stages: 8
+    max_agents: 8
+    gates: [verify]
+  campaign:
+    for: A new module, a migration, anything crossing division boundaries.
+    max_stages: 14
+    max_agents: 14
+    gates: [sign-off, verify]
+
+# Signals that raise the mode. Matching is on the request text, lowercased, word-boundary.
+escalators:
+  campaign:
+    - new module
+    - new service
+    - migration
+    - migrate
+    - refactor the
+    - rearchitect
+    - across the
+    - end to end
+    - from scratch
+    - redesign
+  standard:
+    - add a
+    - implement
+    - build
+    - fix the
+    - integrate
+    - report
+    - dashboard
+    - endpoint
+    - workflow
+  focused:
+    - rename
+    - typo
+    - label
+    - one field
+    - comment
+  direct:
+    - what is
+    - where is
+    - explain
+    - how does
+    - show me
+    - list the
+
+# Rules. `when_any` fires the rule; `unless` suppresses it. Each rule names CAPABILITIES,
+# not agents -- the router picks the agent, so adding a specialist does not mean editing
+# every rule that could have used it.
+rules:
+  - id: R-INTENT
+    always: true
+    capabilities: [decompose]
+    phase: frame
+    why: Every campaign starts with a done-condition or it cannot be finished.
+  - id: R-PRIOR-ART
+    when_any: [existing, already, again, similar, previously, why does, why is]
+    capabilities: [research, recall]
+    phase: frame
+    why: The cheapest work is the work the Archives already did.
+  - id: R-REQUIREMENTS
+    when_any: [should, needs to, requirement, acceptance, criteria, spec, user wants]
+    capabilities: [requirements, acceptance]
+    phase: design
+    why: An ask without acceptance criteria produces work nobody can sign off.
+  - id: R-DATA-MODEL
+    when_any: [schema, model, table, entity, field, relation, index, column]
+    capabilities: [data-model]
+    phase: design
+    why: Storage decisions outlive the code that motivated them.
+  - id: R-ARCHITECTURE
+    when_any: [architecture, structure, boundary, module, service, integrate, coupling]
+    capabilities: [architecture]
+    phase: design
+    why: Structure chosen late is structure paid for twice.
+  - id: R-INTERFACE
+    when_any: [ui, screen, page, form, view, layout, design, component, css, style, dashboard, chart, redesign]
+    capabilities: [ux]
+    phase: design
+    why: What a surface should be is a different question from how it is built.
+  - id: R-ACCESSIBILITY
+    when_any: [ui, screen, page, form, view, accessible, contrast, keyboard]
+    capabilities: [a11y]
+    phase: verify
+    why: Reachability is not a polish item; retrofitting it means rebuilding the markup.
+  - id: R-BUILD-BACKEND
+    when_any: [api, endpoint, handler, job, queue, server, backend, logic, service]
+    capabilities: [backend]
+    phase: build
+    why: Server-side behaviour is where correctness is cheapest to get right.
+  - id: R-BUILD-FRONTEND
+    when_any: [component, client, browser, frontend, interactive, render]
+    capabilities: [frontend]
+    phase: build
+    why: Client behaviour has its own failure modes and its own reviewer.
+  - id: R-INTEGRATION
+    when_any: [webhook, third party, external, sync, callback, oauth, http, integrate]
+    capabilities: [integration]
+    phase: build
+    why: The boundary is where retries, auth and partial failure actually live.
+  - id: R-TEST
+    when_any: [test, verify, prove, coverage, regression]
+    capabilities: [test]
+    phase: verify
+    why: A claim of done needs evidence of the matching kind.
+  - id: R-REVIEW
+    when_any: [review, correctness, refactor, cleanup, quality]
+    capabilities: [review]
+    phase: verify
+    why: The author is the worst reader of their own diff.
+  - id: R-SECURITY
+    when_any: [auth, permission, role, secret, token, credential, injection, public, tenant]
+    capabilities: [security]
+    phase: verify
+    why: Weakness is invisible to a correctness review, which is a different question.
+  - id: R-PERFORMANCE
+    when_any: [slow, performance, scale, timeout, n+1, index, latency, large]
+    capabilities: [performance]
+    phase: verify
+    why: What is fast on ten rows is the outage on ten million.
+  - id: R-MIGRATION
+    when_any: [migration, migrate, backfill, alter table, upgrade, version bump]
+    capabilities: [migrate]
+    phase: verify
+    why: Stored data is the only thing in the system with no undo.
+  - id: R-RELEASE
+    when_any: [deploy, release, ship, publish, production, rollout]
+    capabilities: [release]
+    phase: release
+    why: The rollback path is written before the release or it is not written.
+  - id: R-REPOSITORY
+    when_any: [branch, commit, merge, rebase, push, git, revert]
+    capabilities: [release]
+    phase: release
+    why: Somebody else's uncommitted work is the easiest thing in the world to destroy.
+  - id: R-DATA-BUILD
+    when_any: [query, database, sql, storage, persist, record, row, table]
+    capabilities: [data]
+    phase: build
+    why: The query written today is the outage on the dataset of next year.
+  - id: R-DESIGN-SYSTEM
+    when_any: [consistent, design system, token, theme, brand, palette, spacing]
+    capabilities: [design-system]
+    phase: design
+    why: A surface that does not match the ones already shipped costs the reader a re-learn.
+  - id: R-PRIORITY
+    when_any: [priority, prioritise, prioritize, scope, phase, roadmap, first]
+    capabilities: [prioritise]
+    phase: frame
+    why: Order is a decision. Left implicit it is made by whoever starts typing.
+  - id: R-RISK
+    when_any: [risk, irreversible, dangerous, careful, breaking, backwards compatible]
+    capabilities: [risk]
+    phase: frame
+    why: The steps with no undo are worth naming before, not after.
+  - id: R-REGRESSION
+    when_any: [regression, broke, used to work, stopped working, worked before]
+    capabilities: [regression]
+    phase: verify
+    why: A new pass never offsets a new failure; the pass-to-fail set is its own question.
+  - id: R-BROWSER
+    when_any: [browser, click, journey, walkthrough, manual test, end user]
+    capabilities: [browser]
+    phase: verify
+    why: A property assertion is not a visibility assertion. Somebody has to look.
+  - id: R-PIPELINE
+    when_any: [ci, pipeline, workflow file, github action, build fails, lint]
+    capabilities: [ci]
+    phase: release
+    why: A pipeline that checks less than a human does is a false green.
+  - id: R-OBSERVABILITY
+    when_any: [log, logging, metric, monitor, alert, trace, incident]
+    capabilities: [observability]
+    phase: release
+    why: The signal that would have caught the last incident is worth more than the postmortem.
+  - id: R-DOCS
+    when_any: [document, guide, readme, explain to, onboarding, runbook]
+    capabilities: [docs]
+    phase: deliver
+    why: Undocumented behaviour is rediscovered at full price.
+  - id: R-CAPTURE
+    always: true
+    capabilities: [capture]
+    phase: deliver
+    why: A decision nobody wrote down is a decision the next campaign relitigates.
+  - id: R-REPORT
+    always: true
+    capabilities: [report]
+    phase: deliver
+    why: The Principal reads one brief, not sixteen handoffs.
+
+# Capabilities that exist for the GOVERNANCE commands -- `forge learn`, `forge evolve`,
+# `forge health` -- and are deliberately unreachable from a campaign plan. Declared here so
+# that "no rule asks for this" is a stated design decision and not an oversight; doctor
+# warns about any supplied capability that appears neither in a rule nor in this list.
+governance_capabilities:
+  - health
+  - cost
+  - recruit
+  - train
+  - rollback
+  - learn
+  - index
+  - benchmark
+  - decide
+  - escalate
+  - route
+  - report
+  - capture
+  - research
+  - recall
+  - decompose
+  - requirements
+  - acceptance
+
+# Rules that must not both fire on one artifact. Doctor fails on an asymmetric declaration
+# -- if A conflicts with B, B conflicts with A, always.
+conflicts:
+  - between: [R-BUILD-BACKEND, R-BUILD-FRONTEND]
+    resolve: Both may run, on different files. Never both on the same file in one batch.
+  - between: [R-REVIEW, R-SECURITY]
+    resolve: Both run. They ask different questions and their findings do not merge.
+
+# Article 71. Parallelism is a property of the write set, not of the wish to go faster.
+parallelism:
+  rule: Two agents may share a batch when neither writes, or when their write scopes are disjoint.
+  reviewers_always_parallel: true
+  max_width: 6

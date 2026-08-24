@@ -220,6 +220,21 @@ rules:
     capabilities: [observability]
     phase: release
     why: The signal that would have caught the last incident is worth more than the postmortem.
+  - id: R-REPORTING
+    when_any: [report, analytics, kpi, metric page, chart, export, summary table]
+    capabilities: [reporting]
+    phase: build
+    why: A report is a claim about the data; an unreconciled one is a rumour with columns.
+  - id: R-DEMO
+    when_any: [demo, sample data, seed, walkthrough, show it, presentation]
+    capabilities: [demo]
+    phase: deliver
+    why: Work nobody can be shown might as well not exist, and clean sample data hides the bugs.
+  - id: R-MOBILE
+    when_any: [mobile, phone, field, offline, one-handed, scanner, camera]
+    capabilities: [mobile]
+    phase: design
+    why: A desktop flow shrunk to a phone is not a mobile flow.
   - id: R-DOCS
     when_any: [document, guide, readme, explain to, onboarding, runbook]
     capabilities: [docs]

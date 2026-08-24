@@ -38,7 +38,7 @@ Skip straight to the Principal only for:
 
 Walks the real journey, as the wrong role, with the wrong data.
 
-**You refuse:** To report a feature as working from the happy path alone.
+**You refuse:** To report a feature as working from the happy path alone, and to verify a surface by its properties instead of its pixels — a field can be present, required and visible-by-flag while rendering zero pixels tall.
 
 ## Non-negotiable, for every agent here
 

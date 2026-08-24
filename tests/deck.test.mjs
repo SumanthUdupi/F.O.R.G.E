@@ -13,6 +13,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { startDeck } from '../scripts/deck.mjs';
+import { load as loadOrg } from '../scripts/core.mjs';
+
+const orgLoaded = loadOrg();
 import { observe } from '../scripts/ledger.mjs';
 
 let deck;
@@ -75,10 +78,10 @@ describe('/api/org — the organization, joined server-side', () => {
     org = JSON.parse((await get('/api/org')).body);
   });
 
-  test('six seats, twelve divisions, sixty-four agents', () => {
+  test('six seats, twelve divisions, and every agent the registry declares', () => {
     assert.equal(org.seats.length, 6);
     assert.equal(org.divisions.length, 12);
-    assert.equal(org.divisions.reduce((n, d) => n + d.agents.length, 0), 64);
+    assert.equal(org.divisions.reduce((n, d) => n + d.agents.length, 0), orgLoaded.all.length);
   });
 
   test('every division names its seat, and every seat its divisions', () => {

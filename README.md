@@ -6,7 +6,7 @@
 
 **Give Claude Code an entire company — and run it from a living office.**
 
-Six board seats · twelve departments · 46 specialists · zero dependencies
+Six board seats · twelve departments · 49 specialists · zero dependencies
 
 ### ⤷ [**The full story, told visually → readme.html**](https://sumanthudupi.github.io/F.O.R.G.E/readme.html)
 

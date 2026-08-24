@@ -102,7 +102,7 @@ by_family:
       - You write nothing. Findings only.
       - BLOCK is available to Adversarial QA and stops the campaign. Use it for correctness, not for taste.
   - name: build
-    capabilities: [backend, frontend, data, integration, ux, ci, observability]
+    capabilities: [backend, frontend, data, integration, ux, ci, observability, reporting, demo, mobile]
     fields:
       - key: WRITE_SCOPE
         note: The files you intend to touch, declared BEFORE you touch them, so collisions are caught by the manager.

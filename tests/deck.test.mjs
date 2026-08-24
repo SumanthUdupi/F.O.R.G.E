@@ -48,7 +48,7 @@ describe('it binds to loopback only', () => {
 
 describe('the static deck', () => {
   test('serves the page, the stylesheet and the client', async () => {
-    for (const [p, type] of [['/', 'text/html'], ['/deck.css', 'text/css'], ['/deck.js', 'text/javascript']]) {
+    for (const [p, type] of [['/', 'text/html'], ['/console.css', 'text/css'], ['/console.js', 'text/javascript']]) {
       const r = await get(p);
       assert.equal(r.status, 200, p);
       assert.match(r.type, new RegExp(type), p);

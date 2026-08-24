@@ -119,10 +119,10 @@ diff against `registry/routing.yaml`, not an argument with a model.
 forge deck        # http://127.0.0.1:7717
 ```
 
-**`/` is the Console** — warm paper, plain words, one decision per card. Built for a
-Principal who never wants to see a JSON key. **`/ops` is the instrument panel** — the dark,
-dense Industrial Sapphire deck with every number on one screen. Same server, same zero
-dependencies, loopback only.
+**One surface, by the Principal's direction.** The Console — warm paper, plain words, one
+decision per card, for someone who never wants to see a JSON key. The dense instrument
+panel it replaced is gone; everything it showed lives here, one disclosure deeper instead
+of all at once. Zero dependencies, loopback only.
 
 | Console view | What it does |
 |---|---|
@@ -130,9 +130,10 @@ dependencies, loopback only.
 | **Chat** | Write to any seat, manager or specialist. Honest delivery model: messages are queued, handed to the organization by the session briefing when it next convenes, and answered with `forge reply`. Mail, not a spinner pretending to be chat. |
 | **Ideas** | One textarea, straight to the Discovery Lab, answers threaded underneath. |
 | **Repos to study** | Paste a GitHub link and what you want from it. The Lab reverse-engineers it and reports back before anything is copied in. |
-| **The team** | The six seats and their departments with live status dots — plus Recognition, derived from real outcomes (streaks, most improved, most dependable), so it can be earned and never granted. |
+| **Plans** | Type what you want; see who would work on it, in what order, side-by-side batches, and exactly where it pauses for you — computed by fixed rules, identical on every ask, before anything happens. |
+| **The team** | The six seats and their departments with live status dots; every specialist opens to what it owns, what it refuses and its measured reliability. Below: the seven gates in plain words, the ten principles, and a one-button constitutional health check. Recognition is derived from real outcomes, so it can be earned and never granted. |
 | **Spending** | Token burn attributed by department and agent. An empty ledger shows an honest zero, not an invented chart. |
-| **Sessions** | Every workspace the organization has convened in, switchable from one screen. `?ws=` is validated against that registry, so the HTTP surface can never be pointed at an arbitrary directory. |
+| **Sessions** | Every workspace the organization has convened in, switchable from one screen — each with what the team has learned about it. `?ws=` is validated against that registry, so the HTTP surface can never be pointed at an arbitrary directory. |
 
 The mailbox is one append-only file with three lenses — a chat message, an idea and a repo
 intake are the same row with a different `kind`. Unanswered mail rides the session
@@ -217,7 +218,7 @@ manager anyway is exactly the drift it exists to catch.
 
 ```bash
 node scripts/forge.mjs doctor    # 12 constitutional rules + 6 hygiene checks
-node --test tests/*.test.mjs     # 146 tests
+node --test tests/*.test.mjs     # 148 tests
 ```
 
 ```
@@ -255,8 +256,8 @@ registry/routing.yaml       28 rules, 4 effort modes, the scoring weights
 registry/contracts.yaml     output contracts, composed once, inherited by all 64
 agents/*.md                 BUILD OUTPUT. edit the registry, run `forge build --apply`
 scripts/                    yaml · core · router · vector · ledger · learn · doctor · render · deck
-deck/                       the Console (for the Principal) and the Ops deck (for instruments)
-tests/                      146 tests, node:test, zero dependencies
+deck/                       the Console — the only surface
+tests/                      148 tests, node:test, zero dependencies
 ```
 
 ## Commands

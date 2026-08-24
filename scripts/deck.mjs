@@ -236,9 +236,10 @@ const readBody = (req) =>
 
 /** Serve one static file from deck/, and nothing outside it. */
 const serveStatic = (urlPath, res) => {
-  // '/' is the Principal's Console — warm, sparse, non-technical. The dense instrument
-  // panel lives on at /ops for anyone who wants every number on one screen.
-  const rel = urlPath === '/' ? 'console.html' : urlPath === '/ops' ? 'ops.html' : urlPath.replace(/^\//, '');
+  // '/' is the Console — the only surface. The dense instrument panel it replaced was
+  // removed at the Principal's direction; everything it showed now lives here, one
+  // disclosure deeper instead of all at once.
+  const rel = urlPath === '/' ? 'console.html' : urlPath.replace(/^\//, '');
   const full = path.join(DECK, rel);
   // Resolve first, then check the prefix. Checking the raw string lets "..%2f" through on
   // some clients; checking the resolved path cannot be fooled by encoding.

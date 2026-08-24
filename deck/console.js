@@ -38,6 +38,8 @@ const ago = (iso) => {
   return `${Math.floor(h / 24)}d ago`;
 };
 
+const divOf = (id) => state.org.divisions.find((d) => d.id === id);
+
 const OUTCOME_WORDS = { ok: 'went well', partial: 'partly done', fail: "didn't work", blocked: 'is waiting on approval' };
 const KIND_WORDS = { message: '', idea: 'idea', repo: 'repo to study' };
 
@@ -187,14 +189,21 @@ const viewTeam = () => {
           const d = state.org.divisions.find((x) => x.id === id);
           const st = state.live.status[id] || { state: 'idle' };
           const specialists = d.agents.filter((a) => a.role === 'specialist');
+          const mgr = d.agents.find((a) => a.role === 'manager');
+          const person = (a) => {
+            const m = state.live.memory[a.name];
+            return `<details class="person"><summary>${esc(a.name)}${m ? ` <span class="chip ${m.reliability >= 0.75 ? 'good' : m.reliability < 0.55 ? 'bad' : 'plain'}">${Math.round(m.reliability * 100)}%</span>` : ''}</summary>
+              <div class="persondetail"><b>Owns:</b> ${esc(a.owns)}<br><b>Won't do:</b> ${esc(a.refuses)}</div></details>`;
+          };
           return `<details class="deptrowwrap"><summary>
               <div class="deptrow">
                 <span class="dot ${esc(st.state)}" title="${esc(st.state)}"></span>
                 <span class="nm">${esc(d.name)}</span>
                 <span class="meta">${specialists.length} specialists · led by ${esc(d.manager)}</span>
               </div></summary>
-            <div class="deptdetail">${esc(d.mission)}<br>
-              ${specialists.map((a) => `<span class="chip plain" style="margin:3px 4px 0 0">${esc(a.name)}</span>`).join('')}
+            <div class="deptdetail">${esc(d.mission)}
+              ${mgr && mgr.knows ? `<br><b>${esc(mgr.name)}</b> keeps track of ${esc(mgr.knows)}` : ''}
+              <div style="margin-top:8px">${specialists.map(person).join('')}</div>
             </div></details>`;
         })
         .join('');
@@ -219,7 +228,21 @@ const viewTeam = () => {
         : `<p class="empty">Recognition appears once the team has a track record. It's computed from real outcomes, so it can't be gamed.</p>`}
     </div>
     <h2 class="sec">THE BOARD AND THEIR DEPARTMENTS</h2>
-    ${seats}`;
+    ${seats}
+    <h2 class="sec">WHAT STOPS IT DOING SOMETHING STUPID</h2>
+    <div class="card">
+      ${state.org.gates.map((g) => `<div class="deptrow"><span class="dot blocked"></span><span class="nm">${esc(g.title)}</span><span class="meta">${esc(g.why)}</span></div>`).join('')}
+      <p class="hint" style="margin-top:10px">These seven always pause and wait for you — the organization cannot approve them for itself.</p>
+    </div>
+    <details class="card" style="margin-top:12px"><summary style="cursor:pointer;font-weight:600">The ten working principles</summary>
+      ${state.org.principles.map((pr) => `<p style="margin:8px 0 0;font-size:14px"><b>${esc(pr.name)}.</b> <span style="color:var(--ink-2)">${esc(pr.behaviour)}</span></p>`).join('')}
+    </details>
+    <h2 class="sec">HEALTH CHECK</h2>
+    <div class="card">
+      <button class="go quiet" id="healthcheck">Run the health check</button>
+      <div id="healthout" style="margin-top:10px"></div>
+      <p class="hint">Checks the whole organization against its own constitution — ${state.org.rules.length} rules and the hygiene that keeps them real.</p>
+    </div>`;
 };
 
 const viewSpend = () => {
@@ -255,10 +278,75 @@ const viewSessions = () => {
     <h1>Sessions</h1>
     <p class="sub">Every workspace the organization has worked in. Each keeps its own memory, its own mail and its own spending — switch to see any of them from here.</p>
     ${rows || '<div class="card"><p class="empty">Just this one so far. Run any <b>forge</b> command in another project and it appears here.</p></div>'}
+    <h2 class="sec">WHAT THE TEAM KNOWS ABOUT THIS ONE</h2>
+    <div class="card">${Object.entries(state.live.profile)
+      .filter(([, v]) => v.grade !== 'UNKNOWN' && v.value !== null && v.value !== false && !(Array.isArray(v.value) && !v.value.length))
+      .map(([k, v]) => `<div class="deptrow"><span class="nm">${esc(k.replace(/([A-Z])/g, ' $1').toLowerCase())}</span><span class="meta">${esc(Array.isArray(v.value) ? v.value.join(', ') : String(v.value))} — ${esc(v.why)}</span></div>`)
+      .join('') || '<p class="empty">Nothing learned yet. It reads the workspace on its own the first time it works here.</p>'}</div>
     <div class="card" style="margin-top:16px"><p class="empty">To put the team to work in a workspace: open a terminal there and start <b>claude</b> — waiting messages are handed over automatically at the start of the session.</p></div>`;
 };
 
-const VIEWS = { home: viewHome, chat: viewChat, ideas: viewIdeas, repos: viewRepos, team: viewTeam, spend: viewSpend, sessions: viewSessions };
+const PHASE_WORDS = {
+  frame: ['1 · Understand', 'Pin down what done means before anyone starts.'],
+  design: ['2 · Shape it', 'Decide the approach while changing it is still cheap.'],
+  build: ['3 · Build', 'Make exactly what was decided — nothing extra.'],
+  verify: ['4 · Check it', 'Prove it works. A claim without evidence does not count.'],
+  release: ['5 · Ship it', 'Rollback plan first, then release.'],
+  deliver: ['6 · Report back', 'One clear summary for you, and notes kept for next time.'],
+};
+
+const viewPlans = () => {
+  const v = state.plan;
+  const composer = `<div class="card">
+      <div class="field"><label for="planreq">What would you like done?</label>
+        <input type="text" id="planreq" placeholder="e.g. add rate limiting to the public api and deploy it" autocomplete="off" value="${esc(v ? v.request : '')}">
+      </div>
+      <div style="margin-top:12px"><button class="go" id="plango"${state.planning ? ' disabled' : ''}>${state.planning ? 'Planning…' : 'Show me the plan'}</button></div>
+      <p class="hint">The plan is computed by fixed rules, not by an AI guessing — asking twice gives the same answer. Nothing starts until you take the plan to a session.</p>
+    </div>`;
+
+  if (!v) return `<h1>Plans</h1><p class="sub">See exactly who would work on something, in what order, and where it would pause for you — before anything happens.</p>${composer}`;
+
+  const gates = v.gates
+    .map((g) => `<div class="card needsyou" style="margin-top:12px"><h3>⏸ This will pause for your approval</h3><p><b>${esc(g.title)}.</b> ${esc(g.why)}</p></div>`)
+    .join('');
+
+  let stages = '';
+  let phase = null;
+  for (const b of v.batches) {
+    if (b.phase !== phase) {
+      phase = b.phase;
+      const [t, d] = PHASE_WORDS[phase] || [phase, ''];
+      stages += `<h2 class="sec">${esc(t.toUpperCase())} — ${esc(d)}</h2>`;
+    }
+    if (b.parallel) stages += `<p class="hint" style="margin:0 0 8px">These ${b.stages.length} work side by side:</p>`;
+    for (const id of b.stages) {
+      const st = v.stages.find((x) => x.id === id);
+      const d = divOf(st.division);
+      stages += `<div class="card" style="margin-bottom:8px"><b>${esc(st.agent)}</b>
+        <span class="chip plain">${esc(d.name)}</span>
+        <span class="chip ${st.writes ? 'warn' : 'plain'}">${st.writes ? 'changes files' : 'reads only'}</span>
+        ${st.gate ? '<span class="chip bad">pauses for you</span>' : ''}
+        <p style="margin:6px 0 0;color:var(--ink-2);font-size:14px">${esc(st.owns)}</p></div>`;
+    }
+  }
+
+  const dropped = v.dropped.length
+    ? `<h2 class="sec">LEFT OUT, ON PURPOSE</h2><div class="card">${v.dropped
+        .map((d) => `<p style="margin:4px 0;font-size:14px;color:var(--ink-2)"><b>${esc(d.agent)}</b> — ${esc(d.why)}</p>`)
+        .join('')}</div>`
+    : '';
+
+  return `<h1>Plans</h1>
+    <p class="sub">See exactly who would work on something, in what order, and where it would pause for you — before anything happens.</p>
+    ${composer}
+    <div class="card" style="margin-top:16px"><span class="chip good">${esc(v.mode)}</span>
+      <span style="margin-left:10px;color:var(--ink-2);font-size:14px">${esc(v.intent)}</span></div>
+    ${gates}${stages}${dropped}
+    <div class="card" style="margin-top:16px"><p class="empty">Happy with it? Open a session in this workspace and ask for exactly this — the same plan will drive the work.</p></div>`;
+};
+
+const VIEWS = { plans: viewPlans, home: viewHome, chat: viewChat, ideas: viewIdeas, repos: viewRepos, team: viewTeam, spend: viewSpend, sessions: viewSessions };
 
 // ─────────────────────────────────────────────────────────────────────────── shell
 
@@ -307,6 +395,24 @@ document.addEventListener('click', async (e) => {
     render();
     return;
   }
+  if (e.target.id === 'plango') {
+    const req = $('#planreq').value.trim();
+    if (!req) return;
+    state.planning = true; render();
+    try { state.plan = await api('/api/plan', { request: req }); } catch (err) { alert(err.message); }
+    state.planning = false; render();
+    return;
+  }
+  if (e.target.id === 'healthcheck') {
+    e.target.disabled = true;
+    const r = await api('/api/doctor');
+    const out = $('#healthout');
+    out.innerHTML = r.ok
+      ? `<span class="chip good">All checks passed</span> <span style="font-size:13.5px;color:var(--ink-2)">The constitution holds${r.warnings ? ` — ${r.warnings} minor note(s)` : ''}.</span>`
+      : `<span class="chip bad">${r.failures} problem(s) found</span><pre style="font-size:12px;white-space:pre-wrap;color:var(--ink-2)">${esc(r.lines.filter((l) => l.includes('FAIL')).join('\n'))}</pre>`;
+    e.target.disabled = false;
+    return;
+  }
   if (e.target.id === 'quicksend') {
     const v = $('#quickask').value.trim();
     if (v) { await send({ to: 'chair', body: v }); state.view = 'chat'; state.recipient = 'chair'; render(); }
@@ -347,6 +453,7 @@ document.addEventListener('change', (e) => {
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'quickask') $('#quicksend').click();
+  if (e.key === 'Enter' && e.target.id === 'planreq') $('#plango').click();
 });
 
 const LIVE = new URLSearchParams(location.search).get('live') !== '0';
@@ -354,6 +461,14 @@ const LIVE = new URLSearchParams(location.search).get('live') !== '0';
   const p = new URLSearchParams(location.search);
   if (VIEWS[p.get('view')]) state.view = p.get('view');
   state.org = await api('/api/org');
+  // A deep-linked plan (?view=plans&request=...) joins the SAME await as the first paint.
+  // Sequencing it after the initial render left a window where the page showed
+  // "Planning…" and a capture — or an impatient reader — saw a frozen button; one batch
+  // means the first thing anyone sees is the finished plan.
+  const seeded = p.get('request');
+  if (seeded && state.view === 'plans') {
+    try { state.plan = await api('/api/plan', { request: seeded }); } catch { /* composer stays */ }
+  }
   await refresh();
   if (LIVE) {
     try {

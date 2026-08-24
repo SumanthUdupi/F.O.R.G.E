@@ -18,13 +18,31 @@
     <button class="nav" data-view="chat">Chat<span class="count" id="c-chat"></span></button>
     <button class="nav" data-view="ideas">Ideas</button>
     <button class="nav" data-view="repos">Repos to study</button>
+    <button class="nav" data-view="plans">Plans</button>
     <button class="nav" data-view="team">The team</button>
     <button class="nav" data-view="spend">Spending</button>
     <button class="nav" data-view="sessions">Sessions</button>
-    <div class="foot"><a href="/ops" title="The dense technical view — every number on one screen">Ops console →</a></div>
   </nav>
   <main class="stage"><div class="wrap" id="stage"><p class="empty">One moment…</p></div></main>
 </div>
+<script>
+  // A silent freeze is the worst failure a non-technical surface can have. Any uncaught
+  // error paints a plain-language banner instead of leaving a button saying "Planning…"
+  // forever — which is exactly how this trap earned its place.
+  // Both channels: a throw in a click handler arrives as 'error', but the same throw in
+  // an async chain arrives as 'unhandledrejection' — the first version listened to one and
+  // a crashed render passed in silence.
+  window.addEventListener('unhandledrejection', (e) => {
+    window.dispatchEvent(new ErrorEvent('error', { message: String(e.reason && e.reason.message || e.reason) }));
+  });
+  window.addEventListener('error', (e) => {
+    const d = document.createElement('div');
+    d.setAttribute('data-jserror', '1');
+    d.style.cssText = 'position:fixed;bottom:12px;left:12px;right:12px;background:#f6e2e0;color:#b23b3b;padding:10px 14px;border-radius:10px;font:13px system-ui;z-index:9';
+    d.textContent = 'Something broke on this page: ' + e.message + ' — refresh to recover.';
+    document.body.appendChild(d);
+  });
+</script>
 <script type="module" src="/console.js"></script>
 </body>
 </html>

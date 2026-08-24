@@ -41,12 +41,15 @@ const post = async (p, body) => {
   return { status: res.status, json: await res.json() };
 };
 
-describe('two rooms, one server', () => {
-  test('/ is the Console and /ops is the instrument panel', async () => {
+describe('one room, by the Principal\'s direction', () => {
+  test('/ is the Console, and the retired ops deck is actually gone', async () => {
     const home = await get('/');
     assert.match(home.body, /console\.js/, 'the default surface is not the Console');
-    const ops = await get('/ops');
-    assert.match(ops.body, /deck\.js/, '/ops does not serve the dense deck');
+    // Removed means 404, not lingering. A retired surface that still serves is a second
+    // UI nobody maintains — the exact ghost problem doctor hunts in agents/.
+    for (const gone of ['/ops', '/ops.html', '/deck.js', '/deck.css']) {
+      assert.equal((await get(gone)).status, 404, `${gone} still serves`);
+    }
   });
 });
 
@@ -137,5 +140,19 @@ describe('rollups are derived, never stored', () => {
     for (const o of ['fail', 'fail', 'ok', 'ok']) observe({ agent: 'frontend-engineer', capability: 'frontend', outcome: o, at: o + Math.random() }, dir);
     const r = rewardsPayload(dir);
     assert.ok(r.improved.some((x) => x.agent === 'frontend-engineer'), 'a real turnaround was not recognised');
+  });
+});
+
+describe('the console carries what the ops deck used to', () => {
+  test('plans, team depth, health check and error trap are all served', async () => {
+    const html = (await get('/')).body;
+    assert.match(html, /data-view="plans"/, 'the plan composer has no way in');
+    // A crash in an async render arrives as unhandledrejection, not error. The first trap
+    // listened to one channel and a crashed Plans view froze in silence at "Planning…".
+    assert.match(html, /unhandledrejection/, 'async crashes would freeze the page silently again');
+    const js = (await get('/console.js')).body;
+    assert.match(js, /const divOf =/, 'divOf regression — the ops helper the console never had');
+    assert.match(js, /healthcheck/, 'the constitutional audit lost its button in the move');
+    assert.match(js, /refuses/, 'roster depth (what each agent refuses) did not survive the move');
   });
 });

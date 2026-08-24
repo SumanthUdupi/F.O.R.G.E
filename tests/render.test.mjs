@@ -148,3 +148,16 @@ describe('documentation cannot drift from enforcement', () => {
     assert.equal(committed, charterDoc(org), 'run `forge charter --apply`');
   });
 });
+
+describe('the ledger duty is conveyed, not just decided', () => {
+  test('the shipped skill tells every session to close the ledger', () => {
+    // The improvement was approved as "make campaigns self-report spend". If the duty is
+    // not in the generated skill, it was decided and never conveyed — the exact
+    // declared-vs-conveyed failure this suite exists for.
+    const s = skillMarkdown(org);
+    assert.match(s, /Close the ledger/);
+    assert.match(s, /observe --agent/);
+    assert.match(s, /--tokens/, 'the duty does not mention the token estimate');
+    assert.match(s, /--campaign/, 'the duty does not attribute to a campaign');
+  });
+});

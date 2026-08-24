@@ -61,6 +61,24 @@ The organization proposes; **you approve**. It may write `.forge/` in the worksp
 nothing else — the constitution, the roster and the scripts are outside what evolution may
 touch, and that is enforced in code, not promised in a comment.
 
+## Close the ledger — a campaign that reports nothing never happened
+
+The organization only learns from what reaches the ledger. When a campaign ends — a
+one-specialist campaign included — record each specialist's outcome with a token estimate:
+
+```bash
+node "$FORGE_HOME/scripts/forge.mjs" observe --agent <name> --capability <capability> \
+     --outcome ok|partial|fail|blocked --tokens <estimate> --campaign <short-id>
+```
+
+- A rough token figure attributed to the right agent beats a precise one attributed to
+  nobody. Estimate from the work's share of the session.
+- A correction from the Principal goes in `--correction "..."` on the agent it corrects;
+  two of those become a standing-instruction proposal.
+- `blocked` is recorded too — it is not the agent's failure, and the scorer knows that.
+
+This feeds routing, Spending and Recognition in the Console. Skipping it starves all three.
+
 ## Non-negotiable
 
 - **Grounded truth** — Every claim carries EVIDENCE, INFERENCE or UNKNOWN. An ungraded claim is read as fabricated.

@@ -29,6 +29,49 @@ const RECENT_MS = 45 * 60 * 1000;
 
 const cache = new Map();
 
+/**
+ * The editors currently linked to Claude Code, straight from ~/.claude/ide/*.lock.
+ *
+ * This is the authoritative answer to "which VS Code windows are connected", and it is
+ * the one the transcripts cannot give: an editor can be open and linked with no session
+ * started yet, so it has no transcript at all. The Principal asked why a workspace they
+ * see in VS Code was missing from the Console — this is why, and this is the fix.
+ *
+ * The recorded pid is checked for liveness, because a crashed editor leaves its lock
+ * behind and a stale lock claiming a live editor is exactly the kind of confident lie
+ * this reader exists to avoid.
+ */
+export const connectedEditors = () => {
+  const dir = path.join(os.homedir(), '.claude', 'ide');
+  if (!fs.existsSync(dir)) return [];
+  const out = [];
+  for (const f of fs.readdirSync(dir)) {
+    if (!f.endsWith('.lock')) continue;
+    let j;
+    try { j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')); } catch { continue; }
+    let alive = true;
+    try { process.kill(j.pid, 0); } catch { alive = false; }
+    for (const folder of j.workspaceFolders || []) {
+      out.push({ ide: j.ideName || 'editor', pid: j.pid, folder, alive });
+    }
+  }
+  return out;
+};
+
+/**
+ * Sessions this organization started for its own machinery — E2E runs, smoke tests, the
+ * deck's own probes. They are real sessions, and showing them as the Principal's work is
+ * noise that made the live count wrong: "2 sessions live" was this conversation plus one
+ * of my own test directories. Same class as the temp-directory pollution already fixed in
+ * the workspace registry.
+ */
+const isOwnNoise = (s) => {
+  const cwd = s.cwd || '';
+  const tmp = path.resolve(os.tmpdir());
+  if (cwd.startsWith(tmp) || /^(\/private)?\/tmp\//.test(cwd) || cwd.includes('/var/folders/')) return true;
+  return s.entrypoint === 'sdk-cli';
+};
+
 /** Read the last window of a file as complete lines, newest last. */
 const tailLines = (file, size) => {
   const start = Math.max(0, size - TAIL_BYTES);
@@ -78,7 +121,7 @@ const readSession = (file) => {
 
   const out = {
     id: path.basename(file, '.jsonl'),
-    cwd: null, branch: null, slug: null, model: null,
+    cwd: null, branch: null, slug: null, model: null, entrypoint: null,
     lastAt: st.mtime, startedAt: st.birthtime, size: st.size,
     turns: 0, tokens: 0, cacheRead: 0,
     agents: [], doing: null, doingAt: null, tools: [],
@@ -93,6 +136,7 @@ const readSession = (file) => {
     if (j.cwd) out.cwd = j.cwd;
     if (j.gitBranch) out.branch = j.gitBranch;
     if (j.slug) out.slug = j.slug;
+    if (j.entrypoint) out.entrypoint = j.entrypoint;
     const u = j.message?.usage;
     if (u) {
       out.turns += 1;
@@ -129,13 +173,13 @@ const readSession = (file) => {
  * `scanLimit` bounds the work: only the most recently touched files per workspace are
  * parsed, because a machine with a year of history should not make the Console slow.
  */
-export const allSessions = ({ limit = 24, perWorkspace = 6 } = {}) => {
+export const allSessions = ({ limit = 24, perWorkspace = 6, includeOwnNoise = false } = {}) => {
   const root = PROJECTS();
   // One shape, always. The first version returned a short object on the no-transcripts
   // path, so activeCount came back undefined on exactly the machine that path exists for
   // — a CI runner with no ~/.claude/projects. A contract that changes shape when the
   // answer is "nothing" is not a contract.
-  if (!fs.existsSync(root)) return { available: false, total: 0, sessions: [], activeCount: 0 };
+  if (!fs.existsSync(root)) return { available: false, total: 0, sessions: [], hidden: 0, editors: connectedEditors(), activeCount: 0 };
   const files = [];
   for (const dir of fs.readdirSync(root)) {
     const full = path.join(root, dir);
@@ -149,11 +193,21 @@ export const allSessions = ({ limit = 24, perWorkspace = 6 } = {}) => {
     files.push(...withStat);
   }
   files.sort((a, b) => b.m - a.m);
-  const sessions = files.slice(0, limit).map((x) => readSession(x.f)).filter(Boolean);
+  const editors = connectedEditors();
+  let sessions = files.slice(0, limit * 2).map((x) => readSession(x.f)).filter(Boolean);
+  const hidden = includeOwnNoise ? 0 : sessions.filter(isOwnNoise).length;
+  if (!includeOwnNoise) sessions = sessions.filter((s) => !isOwnNoise(s));
+  sessions = sessions.slice(0, limit);
+  for (const s of sessions) {
+    const link = editors.find((e) => e.alive && s.cwd && (s.cwd === e.folder || s.cwd.startsWith(`${e.folder}/`)));
+    s.ide = link ? link.ide : null;
+  }
   return {
     available: true,
     total: files.length,
     sessions,
+    hidden,
+    editors,
     activeCount: sessions.filter((s) => s.active).length,
   };
 };
@@ -180,7 +234,43 @@ export const orgActivity = () => {
   return {
     available,
     activeCount,
+    editors: connectedEditors(),
     events: events.slice(0, 40),
     busyAgents: [...agentBusy.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => new Date(b.at) - new Date(a.at)),
   };
+};
+
+/**
+ * The agent board: every specialist the organization has, and what it is doing.
+ *
+ * Three honest states, and the third is the point — "idle" and "never used here" are
+ * different facts, and collapsing them would hide the roster's real shape from the
+ * Principal who is trying to decide whether an agent earns its desk.
+ */
+export const agentBoard = (org) => {
+  const { sessions } = allSessions({ limit: 24 });
+  const working = new Map();
+  for (const s of sessions) {
+    if (!s.recent) continue;
+    for (const a of s.agents) {
+      const prev = working.get(a.name);
+      if (!prev || a.at > prev.at) {
+        working.set(a.name, { at: a.at, workspace: s.cwd ? path.basename(s.cwd) : 'unknown', live: s.active, doing: s.doing });
+      }
+    }
+  }
+  const rows = [];
+  for (const d of org.constitution.divisions) {
+    for (const a of org.byDivision.get(d.id) || []) {
+      const w = working.get(a.name);
+      rows.push({
+        name: a.name, division: d.name, role: a.role, owns: a.owns,
+        state: w ? (w.live ? 'working' : 'recent') : 'available',
+        at: w ? w.at : null, workspace: w ? w.workspace : null, doing: w ? w.doing : null,
+      });
+    }
+  }
+  const rank = { working: 0, recent: 1, available: 2 };
+  rows.sort((a, b) => rank[a.state] - rank[b.state] || (b.at ? new Date(b.at) : 0) - (a.at ? new Date(a.at) : 0));
+  return { rows, workingCount: rows.filter((r) => r.state === 'working').length };
 };

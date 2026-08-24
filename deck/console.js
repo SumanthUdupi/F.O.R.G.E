@@ -29,7 +29,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 const state = {
   org: null, live: null, mail: null, tokens: null, rewards: null, wsinfo: null, sessions: null, runsActive: [],
-  ws: null, drawer: null, recipient: 'chair', draft: {}, mode: 'ask', run: null, orgSessions: null, activity: null,
+  ws: null, drawer: null, recipient: 'chair', draft: {}, mode: 'ask', run: null, orgSessions: null, activity: null, board: null,
 };
 
 const api = async (path, body) => {
@@ -234,40 +234,69 @@ const sessionsDrawer = () => {
  * says idle, and an agent appears only because a dispatch was actually recorded.
  */
 const missionDrawer = () => {
-  const os_ = state.orgSessions || { available: false, sessions: [] };
+  const os_ = state.orgSessions || { available: false, sessions: [], editors: [], hidden: 0 };
   const act = state.activity || { events: [], busyAgents: [], activeCount: 0 };
+  const board = state.board || { rows: [], workingCount: 0 };
   const fmtTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
   const wsName = (p) => (p ? p.split('/').filter(Boolean).pop() : 'unknown');
+  // The name the Principal recognises: Claude Code's own session name, the one /resume
+  // shows — not the folder, which is what the first version wrongly used as identity.
+  const title = (x) => (x.slug ? x.slug.replace(/-/g, ' ') : `session in ${wsName(x.cwd)}`);
 
   const live = os_.sessions.filter((x) => x.active);
-  const idle = os_.sessions.filter((x) => !x.active).slice(0, 8);
+  const idle = os_.sessions.filter((x) => !x.active).slice(0, 6);
 
   const card = (x) => `<div class="minithread ${x.active ? 'needsyou' : ''}">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
         <span class="chip ${x.active ? 'good' : 'plain'}">${x.active ? 'LIVE' : ago(x.lastAt)}</span>
-        <b>${esc(wsName(x.cwd))}</b>
-        ${x.branch && x.branch !== 'HEAD' ? `<span class="chip plain">${esc(x.branch)}</span>` : ''}
-        <span class="hint" style="margin:0">${x.turns.toLocaleString()} turns · ${fmtTok(x.tokens)} tokens</span>
+        <b>${esc(title(x))}</b>
+        ${x.ide ? `<span class="chip warn">${esc(x.ide)}</span>` : ''}
       </div>
-      ${x.slug ? `<div style="font-size:12.5px;color:var(--ink-2);margin-top:4px">“${esc(x.slug.replace(/-/g, ' '))}”</div>` : ''}
+      <div class="hint" style="margin:4px 0 0">📁 ${esc(wsName(x.cwd))}${x.branch && x.branch !== 'HEAD' ? ` · ${esc(x.branch)}` : ''} · ${x.turns.toLocaleString()} turns · ${fmtTok(x.tokens)} tokens</div>
       ${x.doing ? `<div style="font-size:13px;margin-top:5px">${x.active ? '<b>now:</b>' : 'last:'} ${esc(x.doing)}</div>` : ''}
-      ${x.agents.length ? `<div style="margin-top:6px">${x.agents.slice(0, 6).map((a) => `<button class="personbtn" data-person="${esc(a.name)}" style="margin:2px 4px 0 0">${avatar(a.name)}<span>${esc(a.name)}<small>${ago(a.at)}</small></span></button>`).join('')}</div>`
-        : '<div class="hint" style="margin-top:5px">no specialist dispatches recorded in this session</div>'}
+      ${x.agents.length ? `<div style="margin-top:6px">${x.agents.slice(0, 6).map((a) => `<button class="personbtn" data-person="${esc(a.name)}" style="margin:2px 4px 0 0">${avatar(a.name)}<span>${esc(a.name)}<small>${ago(a.at)}</small></span></button>`).join('')}</div>` : ''}
     </div>`;
 
+  const editors = (os_.editors || []).filter((e) => e.alive);
+  const editorRows = editors.map((e) => {
+    const has = os_.sessions.some((s2) => s2.cwd && (s2.cwd === e.folder || s2.cwd.startsWith(`${e.folder}/`)));
+    return `<div class="minithread"><span class="chip ${has ? 'good' : 'plain'}">${esc(e.ide)}</span> <b>${esc(wsName(e.folder))}</b>
+      <div class="hint" style="margin-top:3px">${esc(e.folder)}${has ? '' : ' — connected, but no session started here yet'}</div></div>`;
+  }).join('');
+
+  const STATE_CHIP = { working: 'good', recent: 'warn', available: 'plain' };
+  const STATE_WORD = { working: 'working now', recent: 'just worked', available: 'available' };
+  const busy = board.rows.filter((r) => r.state !== 'available');
+  const free = board.rows.filter((r) => r.state === 'available');
+
   return `
-    <div class="dhead"><h2>Mission control</h2><p>${act.activeCount ? `${act.activeCount} session${act.activeCount === 1 ? '' : 's'} working right now` : 'Nothing running right now.'} · ${os_.total || 0} on this machine</p></div>
-    ${live.length ? `<h3 class="dsec">WORKING NOW</h3>${live.map(card).join('')}` : '<p class="empty">No session has produced a line in the last three minutes. Start one with <b>claude</b> in any workspace, or send a <b>Do</b> message to anyone in the office.</p>'}
-    <h3 class="dsec">WHO IS INVOLVED — recorded dispatches</h3>
-    ${act.busyAgents.length
-      ? `<div class="peoplerow">${act.busyAgents.slice(0, 12).map((a) => `<button class="personbtn" data-person="${esc(a.name)}">${avatar(a.name)}<span>${esc(a.name)}<small>${esc(a.workspace)} · ${ago(a.at)}</small></span></button>`).join('')}</div>`
-      : '<p class="empty">No specialist dispatches in the recent window. The organization only claims involvement the transcripts actually record.</p>'}
-    <h3 class="dsec">ORG FEED — what is happening across every session</h3>
+    <div class="dhead"><h2>Mission control</h2><p>${act.activeCount ? `${act.activeCount} session${act.activeCount === 1 ? '' : 's'} working right now` : 'No session is working right now.'}${os_.hidden ? ` · ${os_.hidden} of my own test session${os_.hidden === 1 ? '' : 's'} hidden` : ''}</p></div>
+
+    ${editors.length ? `<h3 class="dsec">EDITORS CONNECTED TO CLAUDE CODE</h3>${editorRows}` : ''}
+
+    ${live.length ? `<h3 class="dsec">SESSIONS WORKING NOW</h3>${live.map(card).join('')}`
+      : '<p class="empty">No session has produced a line in the last three minutes. Sessions appear here the moment they do something — or send a <b>Do</b> message to anyone in the office.</p>'}
+
+    <h3 class="dsec">WHO IS WORKING ON WHAT — ${board.workingCount} of ${board.rows.length} engaged</h3>
+    ${busy.length
+      ? busy.slice(0, 14).map((r) => `<div class="boardrow">
+          ${avatar(r.name)}
+          <div><b>${esc(r.name)}</b> <span class="chip ${STATE_CHIP[r.state]}">${STATE_WORD[r.state]}</span>
+            <div class="hint" style="margin-top:2px">${esc(r.division)}${r.workspace ? ` · 📁 ${esc(r.workspace)}` : ''}${r.at ? ` · ${ago(r.at)}` : ''}</div>
+            ${r.doing ? `<div style="font-size:12.5px;color:var(--ink-2);margin-top:2px">${esc(r.doing)}</div>` : ''}</div>
+          <button class="go quiet" data-person="${esc(r.name)}">Talk</button>
+        </div>`).join('')
+      : `<p class="empty">Nobody has been dispatched in the recent window — all ${board.rows.length} are available. The organization only reports an agent as working when a dispatch was actually recorded, so this is an honest quiet, not a broken meter.</p>`}
+    ${free.length && busy.length ? `<details class="dmeta" style="margin-top:8px"><summary>${free.length} available</summary><div class="peoplerow" style="margin-top:8px">${free.slice(0, 30).map((r) => `<button class="personbtn" data-person="${esc(r.name)}">${avatar(r.name)}<span>${esc(r.name)}<small>${esc(r.division)}</small></span></button>`).join('')}</div></details>` : ''}
+
+    <h3 class="dsec">ORG FEED — across every session</h3>
     ${act.events.length
-      ? act.events.slice(0, 16).map((e) => `<div class="feedline"><span class="ft">${ago(e.at)}</span><span class="fw">${esc(e.workspace)}</span><span>${esc(e.text)}</span></div>`).join('')
+      ? act.events.slice(0, 14).map((e) => `<div class="feedline"><span class="ft">${ago(e.at)}</span><span class="fw">${esc(e.workspace)}</span><span>${esc(e.text)}</span></div>`).join('')
       : '<p class="empty">Quiet everywhere.</p>'}
+
     ${idle.length ? `<h3 class="dsec">RECENT, NOT ACTIVE</h3>${idle.map(card).join('')}` : ''}`;
 };
+
 
 const DRAWERS = { mission: missionDrawer, person: (id) => personDrawer(id), room: (id) => roomDrawer(id), board: boardDrawer, reception: receptionDrawer, sessions: sessionsDrawer };
 
@@ -335,7 +364,7 @@ const refresh = async ({ passive = false } = {}) => {
   // Org-wide activity is a separate, cheap poll: it must never be able to break the
   // Console if a transcript directory is unreadable.
   try {
-    [state.orgSessions, state.activity] = await Promise.all([api('/api/org-sessions'), api('/api/activity')]);
+    [state.orgSessions, state.activity, state.board] = await Promise.all([api('/api/org-sessions'), api('/api/activity'), api('/api/agent-board')]);
   } catch { state.activity = state.activity || { events: [], busyAgents: [], activeCount: 0 }; }
   Office.update(officeData());
   if (passive && typingNow()) return;

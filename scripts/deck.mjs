@@ -30,7 +30,7 @@ import { readLedger, derive, files, measuredSpend, estimateStages, listSessions 
 import { profileWorkspace, loadOverlay, propose, applyProposal } from './learn.mjs';
 import { runDoctor } from './doctor.mjs';
 import * as mailbox from './mailbox.mjs';
-import { allSessions, orgActivity } from './activity.mjs';
+import { allSessions, orgActivity, agentBoard, connectedEditors } from './activity.mjs';
 import { startRun, getRun, killRun, activeRuns } from './runner.mjs';
 
 const DECK = path.join(ROOT, 'deck');
@@ -419,6 +419,8 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
       // Read from the host's own transcripts — ground truth, never inferred.
       if (p === '/api/org-sessions') return json(res, allSessions({ limit: 24 }));
       if (p === '/api/activity') return json(res, orgActivity());
+      if (p === '/api/agent-board') return json(res, agentBoard(org));
+      if (p === '/api/editors') return json(res, { editors: connectedEditors() });
 
       if (p === '/api/workspaces') {
         return json(res, { current: cwd, viewing: wcwd, workspaces: listWorkspaces() });

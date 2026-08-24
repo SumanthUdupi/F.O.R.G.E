@@ -370,7 +370,7 @@ describe('org-wide activity — ground truth, never invented', () => {
     const js = (await get('/console.js')).body;
     assert.ok(js.includes('missionDrawer'), 'mission control is missing from the client');
     assert.ok(js.includes('WORKING NOW'), 'the live-session section is missing');
-    assert.ok(js.includes('recorded dispatches'), 'the involved-agents section is missing');
+    assert.ok(js.includes('WHO IS WORKING ON WHAT'), 'the agent board is missing from the client');
     // ROOT from core.mjs — never new URL(...).pathname, which this repository documents
     // as its own most-repeated trap and which I still wrote here on the third occasion.
     const { ROOT } = await import('../scripts/core.mjs');
@@ -390,7 +390,9 @@ describe('the activity reader on a machine with no transcripts at all', () => {
     try {
       const mod = await import(`../scripts/activity.mjs?nohome=${Date.now()}`);
       const a = mod.allSessions({ limit: 3 });
-      assert.deepEqual(Object.keys(a).sort(), ['activeCount', 'available', 'sessions', 'total']);
+      for (const k of ['available', 'total', 'sessions', 'hidden', 'editors', 'activeCount']) {
+        assert.ok(k in a, `the no-transcripts shape is missing ${k}`);
+      }
       assert.equal(a.available, false);
       assert.equal(a.activeCount, 0);
       const o = mod.orgActivity();
@@ -399,6 +401,59 @@ describe('the activity reader on a machine with no transcripts at all', () => {
       assert.deepEqual(o.busyAgents, []);
     } finally {
       process.env.HOME = realHome;
+    }
+  });
+});
+
+describe('sessions are named the way the Principal recognises them', () => {
+  test('the reader captures slug, entrypoint and the IDE link', async () => {
+    const { allSessions, connectedEditors } = await import('../scripts/activity.mjs');
+    const a = allSessions({ limit: 5 });
+    for (const s of a.sessions) {
+      assert.ok('slug' in s && 'entrypoint' in s && 'ide' in s, 'a session lacks its identity fields');
+    }
+    for (const e of connectedEditors()) {
+      assert.ok(e.ide && e.folder, 'an editor lock lacks its name or folder');
+      assert.equal(typeof e.alive, 'boolean', 'a stale lock must be distinguishable from a live one');
+    }
+  });
+
+  test("the organization's own test sessions are hidden, and the hiding is declared", async () => {
+    // "2 sessions live" was this conversation plus one of my own E2E temp directories.
+    // Hiding them silently would be a second lie; the count of hidden ones is reported.
+    const { allSessions } = await import('../scripts/activity.mjs');
+    const clean = allSessions({ limit: 30 });
+    const all = allSessions({ limit: 30, includeOwnNoise: true });
+    assert.equal(typeof clean.hidden, 'number');
+    for (const s of clean.sessions) {
+      assert.notEqual(s.entrypoint, 'sdk-cli', 'a programmatic session was shown as the Principal\'s work');
+      assert.ok(!/^(\/private)?\/tmp\/|\/var\/folders\//.test(s.cwd || ''), 'a temp-directory session was shown');
+    }
+    assert.ok(all.sessions.length >= clean.sessions.length);
+  });
+});
+
+describe('the agent board answers "who is working on what"', () => {
+  test('every agent appears exactly once with an honest state', async () => {
+    const { agentBoard } = await import('../scripts/activity.mjs');
+    const { load } = await import('../scripts/core.mjs');
+    const org = load();
+    const b = agentBoard(org);
+    // Every agent sits in a division, board seats included, so the board covers all of them.
+    assert.equal(b.rows.length, org.all.length, 'the board must cover every agent');
+    const names = b.rows.map((r) => r.name);
+    assert.equal(new Set(names).size, names.length, 'an agent appears twice');
+    for (const r of b.rows) {
+      assert.ok(['working', 'recent', 'available'].includes(r.state));
+      // "available" and "working" must be distinguishable facts, never collapsed.
+      if (r.state === 'available') assert.equal(r.at, null);
+      else assert.ok(r.at, `${r.name} claims ${r.state} with no timestamp`);
+    }
+  });
+
+  test('the endpoints are served', async () => {
+    for (const p of ['/api/agent-board', '/api/editors']) {
+      assert.equal((await get(p)).status, 200, `${p} is not served`);
     }
   });
 });

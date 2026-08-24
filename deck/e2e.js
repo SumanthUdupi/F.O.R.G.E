@@ -99,7 +99,7 @@ const step = async (name, fn) => {
   await step('the elevator opens mission control with org-wide sessions', async () => {
     click('[data-open="mission"]');
     await until(() => document.body.textContent.includes('Mission control'));
-    await until(() => document.body.textContent.includes('WHO IS INVOLVED'));
+    await until(() => document.body.textContent.includes('WHO IS WORKING ON WHAT'));
     await until(() => document.body.textContent.includes('ORG FEED'));
   });
 

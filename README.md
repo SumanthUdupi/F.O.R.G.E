@@ -132,7 +132,7 @@ of all at once. Zero dependencies, loopback only.
 
 | Console view | What it does |
 |---|---|
-| **Home** | A greeting, what needs your decision (with an Approve button), new answers, and what happened lately — in sentences, not rows. |
+| **Home** | **The Office** — your organization drawn as the place it is: twelve rooms around the board's hex table (no head chair), every specialist at a desk, live lamps per department, envelopes hanging at the door where mail waits, typing animation where a run is working, a flame over a streak-holder's desk, and a courier walking your message over when you send. Click a room to open the department, click a person to chat with them. Canvas 2D, zero dependencies, honest with reduced-motion. Below it: what needs your decision, with the Approve button. |
 | **Chat** | Write to any seat, manager or specialist — and choose **Ask** (answers only, plan mode, cannot write) or **Do** (a live work order: the Console spawns Claude Code headlessly in the workspace, streams the run into the thread, and files the answer as a reply). Your auth, hooks and gates all apply, because it *is* Claude Code underneath. No runtime available? The message queues as mail and the next session delivers it — the thread reads the same either way. |
 | **Ideas** | One textarea, straight to the Discovery Lab, answers threaded underneath. |
 | **Repos to study** | Paste a GitHub link and what you want from it. The Lab reverse-engineers it and reports back before anything is copied in. |

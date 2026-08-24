@@ -57,6 +57,15 @@ const step = async (name, fn) => {
     await until(() => q('.tiles') && q('h1'));
   });
 
+  await step('the office floor is alive and its legend navigates', async () => {
+    await until(() => q('#office'));
+    if (!(q('#office').width > 0)) throw new Error('office canvas has no size');
+    click('.legendchip');
+    await until(() => q('.deptrowwrap[open]'), 6000);
+    click('[data-view="home"]');
+    await until(() => q('#office'));
+  });
+
   await step('chat: pick a recipient, type, send, and see the bubble', async () => {
     click('[data-view="chat"]');
     await until(() => q('#rcpt'));

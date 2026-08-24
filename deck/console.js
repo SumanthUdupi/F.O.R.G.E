@@ -8,6 +8,8 @@
  * the interface lying about the architecture.
  */
 
+import * as Office from '/office.js';
+
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -83,10 +85,20 @@ const viewHome = () => {
         ? `${needs.length === 1 ? 'One thing needs' : `${needs.length} things need`} your decision.`
         : waiting
           ? `Nothing needs you. ${waiting === 1 ? 'One message is' : `${waiting} messages are`} waiting for the team's next session.`
-          : 'Nothing needs you right now.'
+          : 'Nothing needs you right now. The office is yours to wander.'
     }</p>
 
-    <div class="tiles">
+    <div class="officewrap card" aria-label="The office floor — every department as a room">
+      <canvas id="office" style="width:100%;display:block" role="img" aria-label="A live map of the organization: twelve department rooms around the board table. Use the buttons below to open a department."></canvas>
+      <div class="officelegend">
+        ${state.org.divisions.map((d) => {
+          const st = state.live.status[d.id]?.state || 'idle';
+          return `<button class="legendchip" data-room="${d.id}"><span class="dot ${esc(st)}"></span>${esc(d.name)}</button>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div class="tiles" style="margin-top:14px">
       <div class="tile ${needs.length ? 'hot' : ''}"><span class="tn">${needs.length}</span><span class="tl">need${needs.length === 1 ? 's' : ''} your decision</span></div>
       <div class="tile"><span class="tn">${waiting}</span><span class="tl">message${waiting === 1 ? '' : 's'} in flight</span></div>
       <div class="tile"><span class="tn">${(state.sessions?.sessions || []).filter((x) => x.active).length}</span><span class="tl">live session${(state.sessions?.sessions || []).filter((x) => x.active).length === 1 ? '' : 's'}</span></div>
@@ -217,7 +229,7 @@ const viewTeam = () => {
             return `<details class="person"><summary>${esc(a.name)}${m ? ` <span class="chip ${m.reliability >= 0.75 ? 'good' : m.reliability < 0.55 ? 'bad' : 'plain'}">${Math.round(m.reliability * 100)}%</span>` : ''}</summary>
               <div class="persondetail"><b>Owns:</b> ${esc(a.owns)}<br><b>Won't do:</b> ${esc(a.refuses)}</div></details>`;
           };
-          return `<details class="deptrowwrap"><summary>
+          return `<details class="deptrowwrap" id="dept-${id}"><summary>
               <div class="deptrow">
                 <span class="dot ${esc(st.state)}" title="${esc(st.state)}"></span>
                 <span class="nm">${esc(d.name)}</span>
@@ -425,6 +437,18 @@ const render = () => {
     ? `<div class="viewingbanner">Viewing another session: ${esc(state.ws)} <button class="go quiet" id="wsback">Back to this one</button></div>`
     : '';
   $('#stage').innerHTML = banner + VIEWS[state.view]();
+  if (state.view === 'home') {
+    const el = $('#office');
+    if (el) {
+      Office.mount(el, state.org, {
+        onRoom: (id) => { state.view = 'team'; state.selectedRoom = id; render(); const t = document.getElementById(`dept-${id}`); if (t) t.open = true, t.scrollIntoView({ block: 'center' }); },
+        onAgent: (name) => { state.view = 'chat'; state.recipient = name; render(); },
+      });
+      Office.update(officeData());
+    }
+  } else {
+    Office.unmount();
+  }
   if (state.view === 'chat') {
     $('#rcpt').value = state.recipient;
     const t = document.querySelector('.thread');
@@ -446,10 +470,19 @@ const markSeen = () => {
   try { localStorage.setItem('forge-seen', JSON.stringify([...seenReplies].slice(-200))); } catch { /* private windows */ }
 };
 
+const officeData = () => ({
+  status: state.live?.status || {},
+  waitingThreads: ((state.mail && state.mail.threads) || []).filter((t) => !t.answered),
+  runs: state.runsActive || [],
+  rewards: state.rewards || {},
+});
+
 const refresh = async ({ passive = false } = {}) => {
-  [state.live, state.mail, state.tokens, state.rewards, state.wsinfo, state.sessions] = await Promise.all([
+  [state.live, state.mail, state.tokens, state.rewards, state.wsinfo, state.sessions, state.runsActive] = await Promise.all([
     api('/api/state'), api('/api/messages'), api('/api/tokens'), api('/api/rewards'), api('/api/workspaces'), api('/api/sessions'),
+    api('/api/runs').then((r) => r.active),
   ]);
+  Office.update(officeData());
   // A passive poll never repaints over live typing — the fresh data is in state and paints
   // on the next interaction instead.
   if (passive && typingNow()) return;
@@ -493,6 +526,14 @@ document.addEventListener('click', async (e) => {
     e.target.disabled = false;
     return;
   }
+  const chip = e.target.closest('.legendchip');
+  if (chip) {
+    state.view = 'team';
+    render();
+    const t = document.getElementById(`dept-${chip.dataset.room}`);
+    if (t) { t.open = true; t.scrollIntoView({ block: 'center' }); }
+    return;
+  }
   if (e.target.id === 'quicksend') {
     const v = $('#quickask').value.trim();
     if (v) { await send({ to: 'chair', body: v }); state.view = 'chat'; state.recipient = 'chair'; render(); }
@@ -507,6 +548,7 @@ document.addEventListener('click', async (e) => {
     try {
       const r = await api('/api/run', { to: state.recipient, body: v, mode: state.mode, threadId: prior ? prior.id : null });
       state.run = { id: r.runId, text: '', tool: null };
+      Office.courier(state.recipient);
     } catch (err) {
       alert(err.message);
     }

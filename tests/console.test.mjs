@@ -19,6 +19,7 @@ import { observe } from '../scripts/ledger.mjs';
 import * as mailbox from '../scripts/mailbox.mjs';
 import { briefing } from '../scripts/learn.mjs';
 import { startDeck, tokensPayload, rewardsPayload } from '../scripts/deck.mjs';
+import { estimateStages } from '../scripts/ledger.mjs';
 
 const org = load();
 let deck;
@@ -154,5 +155,69 @@ describe('the console carries what the ops deck used to', () => {
     assert.match(js, /const divOf =/, 'divOf regression — the ops helper the console never had');
     assert.match(js, /healthcheck/, 'the constitutional audit lost its button in the move');
     assert.match(js, /refuses/, 'roster depth (what each agent refuses) did not survive the move');
+  });
+});
+
+describe('spend is honest in both directions — studied in codeburn, rebuilt here', () => {
+  test('measured spend reports unavailable rather than zero-as-fact', async () => {
+    // ws is a temp dir with no transcripts. Zero and "could not measure" must never render
+    // the same — that distinction is the whole reason the field exists.
+    const t = JSON.parse((await get('/api/tokens')).body);
+    assert.equal(t.measured.available, false);
+    assert.ok(t.measured.why, 'unavailable with no reason is not a finding');
+  });
+
+  test('campaign rollup attributes to the campaign that reported it', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-camp-'));
+    observe({ agent: 'test-engineer', capability: 'test', outcome: 'ok', tokens: 900, campaign: 'alpha', at: 'a' }, dir);
+    observe({ agent: 'code-reviewer', capability: 'review', outcome: 'ok', tokens: 600, campaign: 'alpha', at: 'b' }, dir);
+    observe({ agent: 'backend-engineer', capability: 'backend', outcome: 'ok', tokens: 400, campaign: 'beta', at: 'c' }, dir);
+    const t = tokensPayload(org, dir);
+    assert.equal(t.byCampaign.alpha.tokens, 1500);
+    assert.equal(t.byCampaign.beta.tasks, 1);
+  });
+});
+
+describe('plans carry a cost grounded in history — studied in OmniRoute, rebuilt here', () => {
+  test('no history means no number, stated as such', () => {
+    const e = estimateStages([{ id: 'S1', agent: 'x', capability: 'backend' }], []);
+    assert.equal(e.total, null);
+    assert.match(e.note, /No token history/);
+  });
+
+  test('a capability with history estimates from its own average; others fall back and say so', () => {
+    const rows = [
+      { agent: 'a', capability: 'backend', outcome: 'ok', tokens: 1000 },
+      { agent: 'a', capability: 'backend', outcome: 'ok', tokens: 3000 },
+      { agent: 'b', capability: 'review', outcome: 'ok', tokens: 500 },
+    ];
+    const e = estimateStages([{ id: 'S1', agent: 'a', capability: 'backend' }, { id: 'S2', agent: 'c', capability: 'novel' }], rows);
+    assert.equal(e.perStage[0].estimate, 2000);
+    assert.equal(e.perStage[0].basis, 'measured for this capability');
+    assert.equal(e.perStage[1].basis, 'workspace average');
+    assert.equal(e.grounded, 1);
+  });
+
+  test('/api/plan ships the estimate with the vector', async () => {
+    const r = await post('/api/plan', { request: 'add an api endpoint' });
+    assert.ok(r.json.cost, 'the plan carries no cost block');
+    assert.ok(['number', 'object'].includes(typeof r.json.cost.total) || r.json.cost.total === null);
+  });
+});
+
+describe('one-command hook install', () => {
+  test('merges, preserves every existing setting, and is idempotent', async () => {
+    const { installHooks } = await import('../scripts/install.mjs');
+    const t = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-hooks-'));
+    fs.writeFileSync(path.join(t, 'settings.json'), JSON.stringify({ theme: 'dark', permissions: { allow: ['Bash(ls)'] }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'echo bye' }] }] } }));
+    installHooks({ root: t });
+    installHooks({ root: t }); // twice — refreshing after an upgrade is the same command
+    const out = JSON.parse(fs.readFileSync(path.join(t, 'settings.json'), 'utf8'));
+    assert.equal(out.theme, 'dark');
+    assert.deepEqual(out.permissions.allow, ['Bash(ls)']);
+    assert.ok(out.hooks.Stop, 'an unrelated hook was clobbered');
+    assert.ok(out.hooks.UserPromptSubmit && out.hooks.SessionStart);
+    assert.match(out.hooks.UserPromptSubmit[0].hooks[0].command, /CLOSE THE LEDGER/);
+    assert.ok(out.env.FORGE_HOME);
   });
 });

@@ -46,15 +46,21 @@ Six accountable seats produce what one cannot: a decision has an **owner**, a ba
 has a **dissenter on the record**, and a cross-portfolio call has a **procedure** instead of
 a mood.
 
+> **The launch page:** [readme.html](./readme.html) — open it locally or on Pages. What was
+> studied, absorbed and refused from six external repos: [docs/STUDIES.md](./docs/STUDIES.md).
+
 ## Install
 
 ```bash
 git clone https://github.com/SumanthUdupi/F.O.R.G.E.git
 cd F.O.R.G.E
-node scripts/forge.mjs doctor            # the constitutional audit. must be clean.
-node scripts/forge.mjs install --apply   # 64 agents + the /forge skill into ~/.claude
-export FORGE_HOME="$PWD"
+node scripts/forge.mjs doctor                     # the constitutional audit. must be clean.
+node scripts/forge.mjs install --apply --hooks    # 64 agents + /forge skill + the two hooks
 ```
+
+`--hooks` merges the routing gate and the session briefing into `~/.claude/settings.json` —
+merge, never replace; atomic write; idempotent, so refreshing after `git pull` is the same
+command. Restart your session afterwards and type `/forge`.
 
 Node 18+. Nothing else — no `npm install`, no lockfile, no runtime dependency. `forge
 doctor` runs on a machine that has never seen this repository before, which is the machine
@@ -130,9 +136,9 @@ of all at once. Zero dependencies, loopback only.
 | **Chat** | Write to any seat, manager or specialist. Honest delivery model: messages are queued, handed to the organization by the session briefing when it next convenes, and answered with `forge reply`. Mail, not a spinner pretending to be chat. |
 | **Ideas** | One textarea, straight to the Discovery Lab, answers threaded underneath. |
 | **Repos to study** | Paste a GitHub link and what you want from it. The Lab reverse-engineers it and reports back before anything is copied in. |
-| **Plans** | Type what you want; see who would work on it, in what order, side-by-side batches, and exactly where it pauses for you — computed by fixed rules, identical on every ask, before anything happens. |
+| **Plans** | Type what you want; see who would work on it, in what order, where it pauses for you — and what it should roughly cost, estimated from this workspace's own measured history. No history, no number: an invented estimate is worse than none. |
 | **The team** | The six seats and their departments with live status dots; every specialist opens to what it owns, what it refuses and its measured reliability. Below: the seven gates in plain words, the ten principles, and a one-button constitutional health check. Recognition is derived from real outcomes, so it can be earned and never granted. |
-| **Spending** | Token burn attributed by department and agent. An empty ledger shows an honest zero, not an invented chart. |
+| **Spending** | Two labelled numbers: **measured** — provider-reported usage read from the session transcripts, cache reads listed apart — and **attributed** — what campaigns reported about themselves, by department, agent and campaign. The gap is named: work that never closed its ledger. |
 | **Sessions** | Every workspace the organization has convened in, switchable from one screen — each with what the team has learned about it. `?ws=` is validated against that registry, so the HTTP surface can never be pointed at an arbitrary directory. |
 
 The mailbox is one append-only file with three lenses — a chat message, an idea and a repo
@@ -218,7 +224,7 @@ manager anyway is exactly the drift it exists to catch.
 
 ```bash
 node scripts/forge.mjs doctor    # 12 constitutional rules + 6 hygiene checks
-node --test tests/*.test.mjs     # 148 tests
+node --test tests/*.test.mjs     # 154 tests
 ```
 
 ```
@@ -257,7 +263,7 @@ registry/contracts.yaml     output contracts, composed once, inherited by all 64
 agents/*.md                 BUILD OUTPUT. edit the registry, run `forge build --apply`
 scripts/                    yaml · core · router · vector · ledger · learn · doctor · render · deck
 deck/                       the Console — the only surface
-tests/                      148 tests, node:test, zero dependencies
+tests/                      154 tests, node:test, zero dependencies
 ```
 
 ## Commands
@@ -277,6 +283,7 @@ tests/                      148 tests, node:test, zero dependencies
 | `forge deck` | the Console + Ops deck, on loopback |
 | `forge inbox` / `forge reply` | mail from the Principal, and how the org answers it |
 | `forge context` | the session briefing — silent when nothing is known |
+| `forge spend` | measured spend (from transcripts) beside the attributed ledger |
 | `forge inbox` | mail from the Principal waiting for an answer |
 | `forge reply <id> --as <agent>` | answer it, as the agent that owns the question |
 

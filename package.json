@@ -1,6 +1,6 @@
 {
   "name": "forge-agent-org",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "F.O.R.G.E. — Foundry for Organized Reasoning, Governance and Evolution. A six-seat board, twelve divisions and 46 specialists for Claude Code, with zero dependencies.",
   "type": "module",
   "bin": { "forge": "./scripts/forge.mjs" },

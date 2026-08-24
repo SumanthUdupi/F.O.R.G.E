@@ -250,10 +250,17 @@ const viewSpend = () => {
   const divs = Object.entries(t.byDivision).sort((a, b) => b[1].tokens - a[1].tokens);
   const max = Math.max(1, ...divs.map(([, v]) => v.tokens));
   const agents = Object.entries(t.byAgent).sort((a, b) => b[1].tokens - a[1].tokens).slice(0, 10);
+  const m = t.measured || {};
+  const campaigns = Object.entries(t.byCampaign || {}).sort((a, b) => b[1].tokens - a[1].tokens).slice(0, 8);
   return `
     <h1>Spending</h1>
-    <p class="sub">What the organization consumes, attributed to who spent it. The Treasury's rule: a cheap wrong answer is the expensive one, so nothing here trades correctness for cost.</p>
-    <div class="card"><span class="bignum">${t.total.toLocaleString()}<small>tokens across ${t.tasks} tasks</small></span></div>
+    <p class="sub">Two honest numbers: what the sessions actually consumed (read from the transcripts), and what campaigns reported about themselves. The gap is work that never closed its ledger.</p>
+    ${m.available
+      ? `<div class="card"><span class="bignum">${(m.input + m.output).toLocaleString()}<small>measured tokens · ${m.sessions} sessions · from the transcripts</small></span>
+         <p class="hint">${m.input.toLocaleString()} in · ${m.output.toLocaleString()} out · ${m.cacheRead.toLocaleString()} cache reads, listed apart because they bill far cheaper.</p></div>`
+      : `<div class="card"><p class="empty">No session transcripts found for this workspace yet — the measured number appears after the first session here.</p></div>`}
+    <div class="card" style="margin-top:12px"><span class="bignum">${t.total.toLocaleString()}<small>attributed tokens across ${t.tasks} tasks — self-reported by campaigns</small></span></div>
+    ${campaigns.length ? `<h2 class="sec">BY CAMPAIGN</h2><div class="card">${campaigns.map(([name, v]) => `<div class="barrow"><span>${esc(name)}</span><span class="track"><i style="width:${Math.max(3, Math.round((v.tokens / Math.max(1, campaigns[0][1].tokens)) * 100))}%"></i></span><span class="val">${v.tokens.toLocaleString()}</span></div>`).join('')}</div>` : ''}
     ${t.total === 0 ? `<div class="card" style="margin-top:12px"><p class="empty">No spend recorded yet. When sessions record outcomes with token counts, this fills in by itself — <b>honest zero beats an invented chart</b>.</p></div>` : `
     <h2 class="sec">BY DEPARTMENT</h2>
     <div class="card">${divs.map(([name, v]) => `<div class="barrow"><span>${esc(name)}</span><span class="track"><i style="width:${Math.max(2, Math.round((v.tokens / max) * 100))}%"></i></span><span class="val">${v.tokens.toLocaleString()}</span></div>`).join('')}</div>
@@ -341,7 +348,8 @@ const viewPlans = () => {
     <p class="sub">See exactly who would work on something, in what order, and where it would pause for you — before anything happens.</p>
     ${composer}
     <div class="card" style="margin-top:16px"><span class="chip good">${esc(v.mode)}</span>
-      <span style="margin-left:10px;color:var(--ink-2);font-size:14px">${esc(v.intent)}</span></div>
+      <span style="margin-left:10px;color:var(--ink-2);font-size:14px">${esc(v.intent)}</span>
+      ${v.cost ? `<p class="hint" style="margin-top:10px">${v.cost.total === null ? esc(v.cost.note) : `Rough cost, from this workspace's own history: <b style="color:var(--ink)">~${v.cost.total.toLocaleString()} tokens</b>. ${esc(v.cost.note)}`}</p>` : ''}</div>
     ${gates}${stages}${dropped}
     <div class="card" style="margin-top:16px"><p class="empty">Happy with it? Open a session in this workspace and ask for exactly this — the same plan will drive the work.</p></div>`;
 };

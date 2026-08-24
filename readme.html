@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F.O.R.G.E. — an organization, not a swarm</title>
+<meta name="description" content="A six-seat board, twelve divisions and 46 specialists for Claude Code. No CEO, no dependencies, no domain — it learns yours.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1l9.5 5.5v11L12 23 2.5 17.5v-11z' fill='%2300E5FF'/%3E%3C/svg%3E">
+<style>
+  /* Industrial Sapphire — the machine-room side of the brand. Single theme, deliberate. */
+  :root{--g:#070b14;--p:#0c1322;--p2:#111a2c;--line:#1d2b45;--cyan:#00e5ff;--cyD:#0a7d8c;
+    --amber:#ffb300;--magma:#ff3d6e;--jade:#2ee6a8;--t:#e6edf7;--t2:#9fb0c9;--faint:#4a5a75;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:"Inter Tight","Helvetica Neue",-apple-system,system-ui,sans-serif}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--g);color:var(--t);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:
+    radial-gradient(1100px 700px at 80% -10%,rgba(0,229,255,.08),transparent 60%),
+    radial-gradient(900px 600px at -5% 110%,rgba(255,179,0,.05),transparent 60%),
+    repeating-linear-gradient(0deg,rgba(124,141,166,.04) 0 1px,transparent 1px 44px),
+    repeating-linear-gradient(90deg,rgba(124,141,166,.04) 0 1px,transparent 1px 44px)}
+  main{position:relative;z-index:1;max-width:960px;margin:0 auto;padding:0 24px 120px}
+  a{color:var(--cyan);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .hero{padding:110px 0 70px;text-align:center}
+  .mark{width:56px;height:62px;margin:0 auto 26px;background:var(--cyan);
+    clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);box-shadow:0 0 60px rgba(0,229,255,.5)}
+  h1{font-size:clamp(40px,7vw,68px);letter-spacing:.16em;margin:0 0 10px;font-weight:800}
+  .expand{color:var(--t2);font-size:15px;letter-spacing:.04em;margin:0 0 26px}
+  .thesis{font-size:clamp(19px,2.6vw,24px);color:var(--t);max-width:32ch;margin:0 auto 8px;font-weight:600;text-wrap:balance}
+  .sub{color:var(--t2);max-width:52ch;margin:0 auto 40px;text-wrap:balance}
+  .cta{display:inline-block;font-family:var(--mono);font-size:14px;background:rgba(0,229,255,.08);
+    border:1px solid rgba(0,229,255,.35);padding:14px 22px;color:var(--cyan);
+    clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)}
+  .strip{display:flex;gap:26px;justify-content:center;flex-wrap:wrap;margin-top:34px;color:var(--faint);font-family:var(--mono);font-size:12px;letter-spacing:.12em}
+  .strip b{color:var(--t2)}
+  h2{font-size:13px;letter-spacing:.26em;color:var(--faint);margin:90px 0 8px;font-weight:700}
+  h3.big{font-size:clamp(24px,3.6vw,34px);margin:0 0 14px;letter-spacing:-.01em;text-wrap:balance}
+  p.lead{color:var(--t2);max-width:64ch;margin:0 0 26px}
+  .panel{background:linear-gradient(180deg,rgba(17,26,44,.75),rgba(12,19,34,.75));border:1px solid var(--line);border-radius:3px;position:relative;overflow:hidden}
+  .panel::after{content:"";position:absolute;inset:0 0 auto;height:1px;background:linear-gradient(90deg,transparent,rgba(0,229,255,.35) 20%,rgba(0,229,255,.35) 80%,transparent)}
+  .term{font-family:var(--mono);font-size:12.5px;line-height:1.75;color:var(--t2);padding:22px 24px;overflow-x:auto;white-space:pre}
+  .term .c{color:var(--cyan)} .term .a{color:var(--amber)} .term .j{color:var(--jade)} .term .m{color:var(--magma)} .term .f{color:var(--faint)}
+  .seats{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:22px}
+  .seat{background:var(--p);border:1px solid var(--line);border-radius:3px;padding:18px 20px}
+  .seat .hx{width:16px;height:18px;background:var(--cyD);clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);margin-bottom:12px}
+  .seat.chair .hx{background:var(--amber)}
+  .seat b{font-size:15px}
+  .seat .owns{color:var(--t2);font-size:13.5px;margin:6px 0 8px;line-height:1.55}
+  .seat .ref{color:var(--faint);font-size:12.5px;line-height:1.55}
+  .seat .ref i{color:var(--magma);font-style:normal;font-weight:700;letter-spacing:.06em;font-size:10.5px}
+  .duo{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:22px}
+  @media(max-width:760px){.duo{grid-template-columns:1fr}}
+  .fact{background:var(--p);border:1px solid var(--line);border-radius:3px;padding:20px 22px}
+  .fact .n{font-family:var(--mono);font-size:30px;color:var(--cyan);font-weight:700}
+  .fact .n.warm{color:var(--amber)} .fact .n.good{color:var(--jade)}
+  .fact p{color:var(--t2);font-size:13.5px;margin:8px 0 0;line-height:1.6}
+  .gates{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+  .gate{font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;color:var(--amber);border:1px solid rgba(255,179,0,.35);padding:7px 13px;border-radius:2px;background:rgba(255,179,0,.05)}
+  .steps{counter-reset:s;margin:26px 0 0;padding:0;list-style:none}
+  .steps li{position:relative;padding:0 0 26px 58px;border-left:1px solid var(--line);margin-left:19px}
+  .steps li:last-child{border-left-color:transparent;padding-bottom:0}
+  .steps li::before{counter-increment:s;content:counter(s,decimal-leading-zero);position:absolute;left:-20px;top:-2px;width:40px;height:40px;display:grid;place-content:center;background:var(--p2);border:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--cyan)}
+  .steps b{display:block;margin-bottom:4px;font-size:16px}
+  .steps p{margin:0;color:var(--t2);font-size:14px;max-width:62ch}
+  .steps code{font-family:var(--mono);font-size:12.5px;color:var(--cyan);background:rgba(0,229,255,.07);padding:2px 7px;border-radius:2px}
+  footer{margin-top:110px;padding-top:28px;border-top:1px solid var(--line);display:flex;gap:20px;flex-wrap:wrap;color:var(--faint);font-size:13px}
+  @media(prefers-reduced-motion:no-preference){.hero>*{animation:rise .7s cubic-bezier(.2,0,0,1) both}
+    .hero>*:nth-child(2){animation-delay:.06s}.hero>*:nth-child(3){animation-delay:.12s}.hero>*:nth-child(4){animation-delay:.18s}.hero>*:nth-child(5){animation-delay:.24s}.hero>*:nth-child(6){animation-delay:.3s}
+    @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}}
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="mark" aria-hidden="true"></div>
+    <h1>F.O.R.G.E.</h1>
+    <p class="expand">Foundry for Organized Reasoning, Governance and Evolution</p>
+    <p class="thesis">An organization, not a swarm.</p>
+    <p class="sub">A six-seat board, twelve divisions and 46 specialists for Claude Code — with no CEO, no dependencies, and no domain. It learns yours, and you approve every change it makes to itself.</p>
+    <a class="cta" href="https://github.com/SumanthUdupi/F.O.R.G.E">git clone https://github.com/SumanthUdupi/F.O.R.G.E</a>
+    <div class="strip"><span><b>0</b> DEPENDENCIES</span><span><b>148</b> TESTS</span><span><b>12</b> RULES ENFORCED</span><span><b>7</b> HUMAN GATES</span><span><b>3</b> OS × <b>3</b> NODE CI</span></div>
+  </section>
+
+  <h2>THE BET</h2>
+  <h3 class="big">Every agent framework grows a chief executive. This one refuses to.</h3>
+  <p class="lead">A single orchestrator routes badly because it has no portfolio, cannot be audited because its reasoning is one stream, and hides its mistakes because no second seat has standing to object. Six accountable seats mean a decision has an owner, a bad decision has a dissenter on the record, and a deadlock goes to you — because a deadlock is information.</p>
+  <div class="seats">
+    <div class="seat chair"><div class="hx"></div><b>Chair of the Board</b><p class="owns">The Campaign Vector, the minutes, the escalation you actually see.</p><p class="ref"><i>REFUSES</i> to break a tie between two seats — a deadlock is escalated, never chaired away.</p></div>
+    <div class="seat"><div class="hx"></div><b>Chief of Works</b><p class="owns">Whether what was built is correct, maintainable and actually verified.</p><p class="ref"><i>REFUSES</i> a claim of "done" with no matching evidence.</p></div>
+    <div class="seat"><div class="hx"></div><b>Chief of Ledger</b><p class="owns">The burn, the attribution, whether a stage earned its cost.</p><p class="ref"><i>REFUSES</i> to trade correctness for tokens.</p></div>
+    <div class="seat"><div class="hx"></div><b>Chief of Workforce</b><p class="owns">Which agents are trusted with what — measured, not assumed.</p><p class="ref"><i>REFUSES</i> to retire an agent before its knowledge is extracted.</p></div>
+    <div class="seat"><div class="hx"></div><b>Chief of Intent</b><p class="owns">Request into requirement; organization into one readable brief.</p><p class="ref"><i>REFUSES</i> to guess at a missing requirement.</p></div>
+    <div class="seat"><div class="hx"></div><b>Chief of Memory</b><p class="owns">What the organization knows, and how confident it is entitled to be.</p><p class="ref"><i>REFUSES</i> to answer from memory when the memory is stale.</p></div>
+  </div>
+
+  <h2>DETERMINISTIC PLANS</h2>
+  <h3 class="big">Ask twice, get the same plan. A wrong route is a diff, not an argument.</h3>
+  <p class="lead">No model composes the plan. Fixed rules read the request, staff specialists by measured reliability, batch by write-scope, and attach the gates — then estimate the cost from this workspace's own history. Real output:</p>
+  <div class="panel"><div class="term"><span class="f">$</span> forge plan <span class="c">"add rate limiting to the public api and deploy it"</span>
+
+mode      <span class="c">STANDARD</span> — raised because <span class="a">GATE-RELEASE</span> fires
+
+<span class="a">GATES — the campaign stops here and waits for you</span>
+  GATE-RELEASE  Production release — the blast radius is other people.
+
+  FRAME    S01  intent-analyst        reads
+  BUILD    S02  integration-engineer  <span class="j">writes</span>
+  VERIFY   S03  security-reviewer     reads   <span class="f">parallel ×3</span>
+           S04  code-reviewer         reads
+           S05  test-engineer         <span class="j">writes</span>
+  RELEASE  S06  build-engineer        <span class="j">writes</span>  <span class="a">GATE — stop here</span>
+  DELIVER  S07  decision-recorder · S08 result-synthesizer
+
+<span class="f">COST, from this workspace's own history</span>
+  roughly <span class="c">7,433 tokens</span> · grounded in 5 of 5 stages' own history</div></div>
+
+  <h2>IT LEARNS — AND YOU APPROVE</h2>
+  <h3 class="big">The tenth campaign is staffed better than the first.</h3>
+  <p class="lead">Outcomes land in an append-only ledger. Reliability is derived — smoothed, so three lucky runs never read as skill — and routing actually moves. The organization proposes its own adaptations; nothing applies without you, everything records its undo, and the constitution, registry and code are outside what evolution may touch. Enforced in code, tested by attack.</p>
+  <div class="duo">
+    <div class="fact"><span class="n m" style="color:var(--magma)">0.708 → 0.111</span><p>backend-engineer after five recorded failures — and it loses the next stage to integration-engineer. No model involved; the score is arithmetic over the ledger.</p></div>
+    <div class="fact"><span class="n good">2 corrections</span><p>from you against one agent become a standing-instruction proposal for that workspace. Approve it once; withdraw it any time by deleting a block.</p></div>
+  </div>
+
+  <h2>HONEST SPEND</h2>
+  <h3 class="big">Two numbers, labelled as what they are.</h3>
+  <p class="lead">Measured — provider-reported usage read straight from the session transcripts, cache reads listed apart. Attributed — what campaigns reported about themselves, per agent and department. The gap between them is named on screen: work that never closed its ledger.</p>
+  <div class="panel"><div class="term"><span class="f">$</span> forge spend
+
+  measured   <span class="c">768,060,451 tokens</span> across 108 sessions — from the transcripts
+  attributed <span class="c">34,600 tokens</span> across 35 ledger rows — self-reported by campaigns</div></div>
+
+  <h2>THE CONSTITUTION HAS TEETH</h2>
+  <h3 class="big">A rule nothing checks is a wish.</h3>
+  <p class="lead">Twelve rules, each naming the check that enforces it — the loader refuses to start if one points at a check that doesn't exist. The audit exits non-zero, CI runs it on nine platforms, and the test suite proves each rule by planting its violation. Seven gates always stop and wait for a human:</p>
+  <div class="gates"><span class="gate">IRREVERSIBLE ACTION</span><span class="gate">PRODUCTION RELEASE</span><span class="gate">SCHEMA MIGRATION</span><span class="gate">CREDENTIALS</span><span class="gate">CHARTER AMENDMENT</span><span class="gate">BUDGET</span><span class="gate">ANYTHING LEAVING THE MACHINE</span></div>
+
+  <h2>GET IT RUNNING</h2>
+  <h3 class="big">Three commands. No npm install, ever.</h3>
+  <ol class="steps">
+    <li><b>Clone and audit</b><p><code>git clone https://github.com/SumanthUdupi/F.O.R.G.E && cd F.O.R.G.E && node scripts/forge.mjs doctor</code> — the constitutional audit runs on a machine that has never seen this repo. Node 18+ is the only requirement.</p></li>
+    <li><b>Install the organization</b><p><code>node scripts/forge.mjs install --apply --hooks</code> — 64 agents, the <code>/forge</code> skill, and the two hooks that make it engage on every prompt. Merges your settings; never clobbers a file it didn't write.</p></li>
+    <li><b>Open the Console</b><p><code>node scripts/forge.mjs deck</code> — warm, plain-language mission control on loopback: chat with any agent, queue ideas and repos for study, approve adaptations, watch spending and recognition. The technical everything-on-one-screen view retired; this is the only surface, on purpose.</p></li>
+  </ol>
+
+  <footer>
+    <a href="https://github.com/SumanthUdupi/F.O.R.G.E">github.com/SumanthUdupi/F.O.R.G.E</a>
+    <a href="https://github.com/SumanthUdupi/F.O.R.G.E/blob/main/CHARTER.md">the charter</a>
+    <a href="https://github.com/SumanthUdupi/F.O.R.G.E/blob/main/docs/STUDIES.md">what was studied and refused</a>
+    <span>MIT · zero dependencies · built by its own board</span>
+  </footer>
+</main>
+</body>
+</html>

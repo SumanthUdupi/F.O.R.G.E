@@ -16,7 +16,7 @@ import { load, ui, ROOT, registerWorkspace } from './core.mjs';
 import { composeVector, renderVector } from './vector.mjs';
 import { runDoctor } from './doctor.mjs';
 import { build } from './render.mjs';
-import { observe, readLedger, derive, saveMemory, files } from './ledger.mjs';
+import { observe, readLedger, derive, saveMemory, files, estimateStages, measuredSpend } from './ledger.mjs';
 
 /**
  * Current memory, derived from the ledger on every call.
@@ -29,7 +29,7 @@ import { observe, readLedger, derive, saveMemory, files } from './ledger.mjs';
  */
 const currentMemory = () => derive(readLedger()).memory;
 import { profileWorkspace, renderProfile, propose, applyProposal, loadOverlay, briefing, CAP } from './learn.mjs';
-import { install } from './install.mjs';
+import { install, installHooks } from './install.mjs';
 import { charterDoc } from './charter-doc.mjs';
 import { startDeck } from './deck.mjs';
 import * as mailbox from './mailbox.mjs';
@@ -60,7 +60,9 @@ F.O.R.G.E. — Foundry for Organized Reasoning, Governance and Evolution
   forge roster [division]       who exists, what they own, what they refuse
   forge doctor                  the constitutional audit. Non-zero exit on any violation.
   forge build [--apply]         regenerate agents/ and the skill from the registry
-  forge install [--apply]       install into ~/.claude (agents + skill)
+  forge install [--apply] [--hooks]
+                                install into ~/.claude (agents + skill; --hooks wires the
+                                routing gate and session briefing too)
   forge charter [--apply]       regenerate CHARTER.md from the constitution
 
   forge deck [--port 7717]      open the Command Deck in a browser. Loopback only,
@@ -81,6 +83,8 @@ F.O.R.G.E. — Foundry for Organized Reasoning, Governance and Evolution
   forge evolve                  review pending proposals
       --apply <id>              approve one. This is the only way anything is applied.
   forge memory                  what the organization currently believes about who is good at what
+  forge spend                   measured workspace spend (from session transcripts) and
+                                the attributed ledger, side by side
 
 Everything the organization learns lives in ./.forge/ and is scoped to this workspace.
 `;
@@ -106,8 +110,13 @@ switch (cmd) {
     if (!request) die('plan needs a request: forge plan "add rate limiting to the public api"');
     const o = org();
     const v = composeVector(request, o, { memory: currentMemory(), mode: flag('mode') });
-    if (flag('json')) console.log(JSON.stringify(v, null, 2));
-    else console.log(renderVector(v, o));
+    const cost = estimateStages(v.stages, readLedger());
+    if (flag('json')) console.log(JSON.stringify({ ...v, cost }, null, 2));
+    else {
+      console.log(renderVector(v, o));
+      console.log(`\nCOST, from this workspace's own history`);
+      console.log(cost.total === null ? `  ${cost.note}` : `  roughly ${cost.total.toLocaleString()} tokens · ${cost.note}`);
+    }
     break;
   }
 
@@ -171,6 +180,13 @@ switch (cmd) {
   case 'install': {
     const r = install(org(), { apply: Boolean(flag('apply')), force: Boolean(flag('force')) });
     console.log(r.report);
+    if (flag('hooks') && r.ok && r.applied) {
+      const h = installHooks();
+      console.log(`  hooks merged into ${h.file} — ${h.keysBefore} setting(s) before, ${h.keysAfter} after, nothing dropped.`);
+      console.log('  Restart the host session for the hooks to load.\n');
+    } else if (!flag('hooks')) {
+      console.log('  add --hooks to also wire the routing gate and session briefing into ~/.claude/settings.json\n');
+    }
     process.exit(r.ok ? 0 : 1);
     break;
   }
@@ -278,6 +294,26 @@ switch (cmd) {
     } catch (e) {
       die(e.message);
     }
+    break;
+  }
+
+  case 'spend': {
+    const m = measuredSpend();
+    const rows = readLedger().filter((r) => r.agent);
+    const attributed = rows.reduce((n, r) => n + (r.tokens || 0), 0);
+    console.log(ui.head('SPEND'));
+    if (m.available) {
+      console.log(`\n  measured   ${(m.input + m.output).toLocaleString()} tokens across ${m.sessions} session(s) — provider-reported, from the transcripts`);
+      console.log(`             ${m.input.toLocaleString()} in · ${m.output.toLocaleString()} out · ${m.cacheRead.toLocaleString()} cache reads (billed cheaper, listed apart)`);
+    } else {
+      console.log(`\n  measured   unavailable — ${m.why}`);
+    }
+    console.log(`  attributed ${attributed.toLocaleString()} tokens across ${rows.length} ledger row(s) — what campaigns reported about themselves`);
+    if (m.available && attributed) {
+      const pct = Math.round((attributed / Math.max(1, m.input + m.output)) * 100);
+      console.log(`\n  ${pct}% of measured spend is attributed. The gap is work that never closed its ledger.`);
+    }
+    console.log('');
     break;
   }
 

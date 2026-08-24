@@ -13,7 +13,7 @@
 # is worse than a missing one: it wins routes and then fails them.
 
 meta:
-  version: 1.0.0
+  version: 1.1.0
   # Model tiers are named, not vendor-locked (Article 140). `forge install` maps them to
   # whatever the host runtime offers.
   tiers:

@@ -18,7 +18,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { paths, ui } from './core.mjs';
+import { paths, ui, ROOT } from './core.mjs';
 import { runDoctor } from './doctor.mjs';
 import { build } from './render.mjs';
 
@@ -99,6 +99,55 @@ export const install = (org, { apply = false, force = false, root = home() } = {
   L.push('  Set FORGE_HOME so the skill can find the CLI:');
   L.push(`      export FORGE_HOME="${path.resolve(paths.agents, '..')}"\n`);
   return { ok: true, report: L.join('\n'), applied: true };
+};
+
+/**
+ * Install or refresh the two hooks in ~/.claude/settings.json.
+ *
+ * Merge, never replace; write beside and rename, because a half-written settings.json
+ * silently disables every setting in the file; parse back before the rename so invalid
+ * output never lands; idempotent, so refreshing after an upgrade is the same command.
+ * The full payloads and the reasoning live in docs/HOOKS.md.
+ */
+export const installHooks = ({ root = home(), forgeHome = ROOT } = {}) => {
+  const file = path.join(root, 'settings.json');
+  const settings = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+  const before = Object.keys(settings).length;
+
+  const GATE = [
+    'ROUTING GATE (F.O.R.G.E.): unless this is a lookup, a direct question, or a single-file edit,',
+    'invoke the forge skill BEFORE any other tool call, and state the one-line Routing declaration.',
+    'Do not route from memory — run: node "$FORGE_HOME/scripts/forge.mjs" plan "<request>".',
+    'It composes the Campaign Vector deterministically from the registry.',
+    'There is no chief executive — six board seats own the divisions between them, and a deadlock',
+    'escalates to the Principal rather than being broken by a chair.',
+    'Seven gates stop and wait for the Principal: irreversible actions, production release, schema',
+    'migration, credentials, charter amendment, budget, anything leaving the machine.',
+    'A change that writes must verify — evidence of the matching kind, never a claim of done.',
+    'Every claim carries EVIDENCE, INFERENCE or UNKNOWN. An ungraded claim reads as fabricated.',
+    'When a campaign ends, CLOSE THE LEDGER: record each specialist with',
+    'node "$FORGE_HOME/scripts/forge.mjs" observe --agent <n> --capability <c> --outcome',
+    'ok|partial|fail|blocked --tokens <estimate> --campaign <id> — a campaign that reports nothing',
+    'never happened, and Spending, Recognition and routing all starve without it.',
+    'Answer trivial requests directly: convening the organization for a typo costs more than the typo.',
+  ].join(' ');
+
+  const hooks = { ...(settings.hooks || {}) };
+  hooks.UserPromptSubmit = [
+    { hooks: [{ type: 'command', command: `echo ${JSON.stringify(JSON.stringify({ hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext: GATE }, suppressOutput: true }))}`, timeout: 5 }] },
+  ];
+  hooks.SessionStart = [
+    { hooks: [{ type: 'command', command: 'node "$FORGE_HOME/scripts/forge.mjs" context 2>/dev/null | jq -Rs \'if . == "" then empty else {hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:.},suppressOutput:true} end\' 2>/dev/null || true', timeout: 10, statusMessage: 'Reading what this workspace has taught F.O.R.G.E....' }] },
+  ];
+  settings.hooks = hooks;
+  settings.env = { ...(settings.env || {}), FORGE_HOME: forgeHome };
+
+  const tmp = `${file}.tmp`;
+  fs.mkdirSync(root, { recursive: true });
+  fs.writeFileSync(tmp, `${JSON.stringify(settings, null, 2)}\n`);
+  JSON.parse(fs.readFileSync(tmp, 'utf8'));
+  fs.renameSync(tmp, file);
+  return { file, keysBefore: before, keysAfter: Object.keys(settings).length };
 };
 
 export { MARKER };

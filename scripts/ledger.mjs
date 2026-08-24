@@ -141,3 +141,93 @@ export const saveMemory = (derived, cwd = process.cwd()) => {
   fs.writeFileSync(f.memory, `${JSON.stringify(derived, null, 2)}\n`);
   return f.memory;
 };
+
+/**
+ * Cost estimation for a plan — absorbed from studying OmniRoute, rebuilt on our terms.
+ *
+ * OmniRoute cuts spend by routing requests across provider free tiers through a gateway.
+ * The gateway is the part that cannot come here (a runtime service, credentials, egress —
+ * three gates in one). The part worth keeping is smaller and better: a plan should say
+ * what it will roughly cost BEFORE it runs, and the only honest source for that number is
+ * this workspace's own measured history. No history, no number — an invented estimate is
+ * worse than none, because it gets budgeted against.
+ */
+export const estimateStages = (stages, rows) => {
+  const byCap = {};
+  for (const r of rows) {
+    if (!r.capability || !(r.tokens > 0)) continue;
+    const c = (byCap[r.capability] ??= { tokens: 0, n: 0 });
+    c.tokens += r.tokens;
+    c.n += 1;
+  }
+  const measured = Object.values(byCap);
+  const overall = measured.length ? Math.round(measured.reduce((s, c) => s + c.tokens, 0) / measured.reduce((s, c) => s + c.n, 0)) : null;
+
+  let total = 0;
+  let grounded = 0;
+  const perStage = stages.map((s) => {
+    const caps = String(s.capability || '').split('+');
+    const hit = caps.map((c) => byCap[c]).find(Boolean);
+    const est = hit ? Math.round(hit.tokens / hit.n) : overall;
+    if (hit) grounded += 1;
+    if (est) total += est;
+    return { id: s.id, agent: s.agent, estimate: est, basis: hit ? 'measured for this capability' : overall ? 'workspace average' : 'no history' };
+  });
+
+  return {
+    total: overall === null ? null : total,
+    perStage,
+    grounded,
+    of: stages.length,
+    note:
+      overall === null
+        ? 'No token history in this workspace yet — estimates appear once campaigns close their ledger.'
+        : `Grounded in ${grounded} of ${stages.length} stages' own history; the rest use the workspace average.`,
+  };
+};
+
+/**
+ * Measured spend, read from the host runtime's own session transcripts — absorbed from
+ * studying codeburn, rebuilt without the desktop app.
+ *
+ * codeburn's real insight is the data source: the transcripts already record exactly what
+ * each request cost, so a spend view built on estimates is leaving the truth on disk.
+ * This reads the JSONL transcripts for THIS workspace and sums the provider-reported
+ * usage. It is workspace-total truth; per-agent attribution still comes from the ledger,
+ * and the Console shows both, labelled as what they are.
+ */
+export const measuredSpend = (cwd = process.cwd()) => {
+  const home = path.join(process.env.HOME || '', '.claude', 'projects');
+  const flat = path.resolve(cwd).replace(/[/.]/g, '-');
+  const dir = path.join(home, flat);
+  if (!fs.existsSync(dir)) {
+    return { available: false, why: 'no session transcripts found for this workspace', input: 0, output: 0, cacheRead: 0, sessions: 0 };
+  }
+  let input = 0;
+  let output = 0;
+  let cacheRead = 0;
+  let sessions = 0;
+  for (const f of fs.readdirSync(dir)) {
+    if (!f.endsWith('.jsonl')) continue;
+    sessions += 1;
+    let body = '';
+    try {
+      body = fs.readFileSync(path.join(dir, f), 'utf8');
+    } catch {
+      continue;
+    }
+    for (const line of body.split('\n')) {
+      if (!line.includes('"usage"')) continue;
+      try {
+        const u = JSON.parse(line).message?.usage;
+        if (!u) continue;
+        input += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+        cacheRead += u.cache_read_input_tokens || 0;
+        output += u.output_tokens || 0;
+      } catch {
+        /* one corrupt line is one corrupt line */
+      }
+    }
+  }
+  return { available: true, input, output, cacheRead, sessions };
+};

@@ -1,6 +1,6 @@
 # F.O.R.G.E. — Charter
 
-**Foundry for Organized Reasoning, Governance and Evolution** · v1.0.0
+**Foundry for Organized Reasoning, Governance and Evolution** · v1.1.0
 
 > An organization, not a swarm. Hierarchy is deliberate, because auditability and routing quality both require knowing who decided and on what evidence.
 

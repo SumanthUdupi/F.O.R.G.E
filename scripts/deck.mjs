@@ -26,7 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { load, ROOT, resolveContract, registerWorkspace, listWorkspaces } from './core.mjs';
 import { composeVector } from './vector.mjs';
-import { readLedger, derive, files } from './ledger.mjs';
+import { readLedger, derive, files, measuredSpend, estimateStages } from './ledger.mjs';
 import { profileWorkspace, loadOverlay, propose, applyProposal } from './learn.mjs';
 import { runDoctor } from './doctor.mjs';
 import * as mailbox from './mailbox.mjs';
@@ -171,7 +171,24 @@ export const tokensPayload = (org, cwd = process.cwd()) => {
     d.tokens += v.tokens;
     d.tasks += v.tasks;
   }
-  return { total: rows.reduce((n, r) => n + (r.tokens || 0), 0), tasks: rows.length, byAgent, byDivision };
+  const byCampaign = {};
+  for (const r of rows) {
+    if (!r.campaign) continue;
+    const c = (byCampaign[r.campaign] ??= { tokens: 0, tasks: 0 });
+    c.tokens += r.tokens || 0;
+    c.tasks += 1;
+  }
+  return {
+    total: rows.reduce((n, r) => n + (r.tokens || 0), 0),
+    tasks: rows.length,
+    byAgent,
+    byDivision,
+    byCampaign,
+    // The workspace-total truth, read from the host's own transcripts (studied in
+    // codeburn, rebuilt without the desktop app). Attribution still comes from the
+    // ledger; the Console labels each number as what it is.
+    measured: measuredSpend(cwd),
+  };
 };
 
 /**
@@ -308,7 +325,8 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
         if (!request.trim()) return json(res, { error: 'a plan needs a request' }, 400);
         const memory = derive(readLedger(wcwd)).memory;
         const mode = ['direct', 'focused', 'standard', 'campaign'].includes(body.mode) ? body.mode : null;
-        return json(res, composeVector(request, org, { memory, mode }));
+        const vector = composeVector(request, org, { memory, mode });
+        return json(res, { ...vector, cost: estimateStages(vector.stages, readLedger(wcwd)) });
       }
 
       if (p === '/api/learn' && req.method === 'POST') {

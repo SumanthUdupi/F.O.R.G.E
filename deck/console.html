@@ -14,14 +14,14 @@
       <span class="mark" aria-hidden="true"></span>
       <span><b>F.O.R.G.E.</b><small id="ws-name">your organization</small></span>
     </div>
-    <button class="nav" data-view="home">Home<span class="count" id="c-home"></span></button>
-    <button class="nav" data-view="chat">Chat<span class="count" id="c-chat"></span></button>
-    <button class="nav" data-view="ideas">Ideas</button>
-    <button class="nav" data-view="repos">Repos to study</button>
-    <button class="nav" data-view="plans">Plans</button>
-    <button class="nav" data-view="team">The team</button>
-    <button class="nav" data-view="spend">Spending</button>
-    <button class="nav" data-view="sessions">Sessions</button>
+    <button class="nav" data-view="home"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z"/></svg>Home<span class="count" id="c-home"></span></button>
+    <button class="nav" data-view="chat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4V5a1 1 0 0 1 1-1z"/></svg>Chat<span class="count" id="c-chat"></span></button>
+    <button class="nav" data-view="ideas"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 1 4 12.7V17a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1v-2.3A7 7 0 0 1 12 2zM9 21h6v1H9z"/></svg>Ideas</button>
+    <button class="nav" data-view="repos"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v16l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>Repos to study</button>
+    <button class="nav" data-view="plans"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 5h16v3H4zM4 10.5h10v3H4zM4 16h13v3H4z"/></svg>Plans</button>
+    <button class="nav" data-view="team"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9z"/></svg>The team</button>
+    <button class="nav" data-view="spend"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M14 2a9 9 0 0 1 8 8h-8z"/></svg>Spending</button>
+    <button class="nav" data-view="sessions"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9h2a7 7 0 1 0 7-7zM11 8h2v5l4 2-1 1.7-5-2.7z"/></svg>Sessions</button>
   </nav>
   <main class="stage"><div class="wrap" id="stage"><p class="empty">One moment…</p></div></main>
 </div>
@@ -44,5 +44,6 @@
   });
 </script>
 <script type="module" src="/console.js"></script>
+<script type="module">if (new URLSearchParams(location.search).get("e2e") === "1") import("/e2e.js");</script>
 </body>
 </html>

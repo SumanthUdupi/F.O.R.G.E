@@ -139,7 +139,7 @@ of all at once. Zero dependencies, loopback only.
 | **Plans** | Type what you want; see who would work on it, in what order, where it pauses for you — and what it should roughly cost, estimated from this workspace's own measured history. No history, no number: an invented estimate is worse than none. |
 | **The team** | The six seats and their departments with live status dots; every specialist opens to what it owns, what it refuses and its measured reliability. Below: the seven gates in plain words, the ten principles, and a one-button constitutional health check. Recognition is derived from real outcomes, so it can be earned and never granted. |
 | **Spending** | Two labelled numbers: **measured** — provider-reported usage read from the session transcripts, cache reads listed apart — and **attributed** — what campaigns reported about themselves, by department, agent and campaign. The gap is named: work that never closed its ledger. |
-| **Sessions** | Every workspace the organization has convened in, switchable from one screen — each with what the team has learned about it. `?ws=` is validated against that registry, so the HTTP surface can never be pointed at an arbitrary directory. |
+| **Sessions** | Your real Claude Code sessions, read from the transcripts — when each started, turns, tokens, and a live badge on the active one. Places the organization has worked sit below, switchable; `?ws=` is validated against the registry. |
 
 The mailbox is one append-only file with three lenses — a chat message, an idea and a repo
 intake are the same row with a different `kind`. Unanswered mail rides the session
@@ -224,7 +224,7 @@ manager anyway is exactly the drift it exists to catch.
 
 ```bash
 node scripts/forge.mjs doctor    # 12 constitutional rules + 6 hygiene checks
-node --test tests/*.test.mjs     # 154 tests
+node --test tests/*.test.mjs     # 158 tests
 ```
 
 ```
@@ -263,7 +263,7 @@ registry/contracts.yaml     output contracts, composed once, inherited by all 64
 agents/*.md                 BUILD OUTPUT. edit the registry, run `forge build --apply`
 scripts/                    yaml · core · router · vector · ledger · learn · doctor · render · deck
 deck/                       the Console — the only surface
-tests/                      154 tests, node:test, zero dependencies
+tests/                      158 tests, node:test, zero dependencies
 ```
 
 ## Commands

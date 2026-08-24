@@ -85,7 +85,11 @@ export const profileWorkspace = (cwd = process.cwd()) => {
   if (pkgRaw) {
     try {
       const pkg = JSON.parse(pkgRaw);
-      if (pkg.scripts?.test) {
+      // npm's scaffold ships scripts.test as `echo "Error: no test specified" && exit 1`.
+      // Grading that as an EVIDENCE-backed test command handed every agent a verification
+      // step guaranteed to fail — found when the profiler read a real workspace that had
+      // never written tests. A placeholder is the absence of a test command, not one.
+      if (pkg.scripts?.test && !/no test specified/i.test(pkg.scripts.test)) {
         testCommand = { value: 'npm test', grade: 'EVIDENCE', why: `package.json scripts.test = ${pkg.scripts.test}` };
       }
     } catch {

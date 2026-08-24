@@ -12,7 +12,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const state = {
-  org: null, live: null, mail: null, tokens: null, rewards: null, wsinfo: null, integrations: null,
+  org: null, live: null, mail: null, tokens: null, rewards: null, wsinfo: null, sessions: null,
   view: 'home', ws: null, recipient: 'chair', draft: {},
 };
 
@@ -22,7 +22,7 @@ const api = async (path, body) => {
   const url = state.ws ? `${path}${sep}ws=${encodeURIComponent(state.ws)}` : path;
   const res = await fetch(url, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : undefined);
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'something went wrong');
+  if (!res.ok) throw new Error(`${data.error || 'something went wrong'} (${url})`);
   return data;
 };
 
@@ -40,6 +40,14 @@ const ago = (iso) => {
 
 const divOf = (id) => state.org.divisions.find((d) => d.id === id);
 
+/** A small hex avatar with initials — colour derived from the name, stable across renders. */
+const HUES = ['#b05f2a', '#0d8ea3', '#3d7a5c', '#a8741c', '#7d5a7a', '#6b7c8f'];
+const avatar = (name, kind = '') => {
+  const initials = kind === 'you' ? 'You' : name.split('-').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  const hue = kind === 'you' ? 'var(--copper)' : HUES[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % HUES.length];
+  return `<span class="av" style="background:${hue}" title="${esc(name)}">${esc(initials)}</span>`;
+};
+
 const OUTCOME_WORDS = { ok: 'went well', partial: 'partly done', fail: "didn't work", blocked: 'is waiting on approval' };
 const KIND_WORDS = { message: '', idea: 'idea', repo: 'repo to study' };
 
@@ -52,7 +60,7 @@ const viewHome = () => {
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const needs = pendingProposals();
-  const waiting = (state.mail.threads || []).filter((t) => !t.answered).length;
+  const waiting = ((state.mail && state.mail.threads) || []).filter((t) => !t.answered).length;
 
   const needsCards = needs
     .map(
@@ -65,7 +73,7 @@ const viewHome = () => {
     )
     .join('');
 
-  const answered = (state.mail.threads || []).filter((t) => t.answered).slice(0, 3);
+  const answered = ((state.mail && state.mail.threads) || []).filter((t) => t.answered).slice(0, 3);
   const digest = (state.live.feed || []).slice(0, 8);
 
   return `
@@ -78,6 +86,12 @@ const viewHome = () => {
           : 'Nothing needs you right now.'
     }</p>
 
+    <div class="tiles">
+      <div class="tile ${needs.length ? 'hot' : ''}"><span class="tn">${needs.length}</span><span class="tl">need${needs.length === 1 ? 's' : ''} your decision</span></div>
+      <div class="tile"><span class="tn">${waiting}</span><span class="tl">message${waiting === 1 ? '' : 's'} in flight</span></div>
+      <div class="tile"><span class="tn">${(state.sessions?.sessions || []).filter((x) => x.active).length}</span><span class="tl">live session${(state.sessions?.sessions || []).filter((x) => x.active).length === 1 ? '' : 's'}</span></div>
+      <div class="tile ${state.live.health.ok ? 'ok' : 'bad'}"><span class="tn">${state.live.health.ok ? '✓' : state.live.health.failures}</span><span class="tl">${state.live.health.ok ? 'constitution holds' : 'constitution violations'}</span></div>
+    </div>
     ${needs.length ? `<h2 class="sec">NEEDS YOU</h2>${needsCards}` : ''}
 
     <h2 class="sec">ASK THE ORGANIZATION</h2>
@@ -109,14 +123,14 @@ const viewChat = () => {
     .flatMap((d) => d.agents.filter((a) => a.role === 'specialist').map((a) => `<option value="${esc(a.name)}">${esc(a.name)} (${esc(d.name)})</option>`))
     .join('');
 
-  const mine = (state.mail.threads || []).filter((t) => t.to === state.recipient && t.kind === 'message');
+  const mine = ((state.mail && state.mail.threads) || []).filter((t) => t.to === state.recipient && t.kind === 'message');
   const thread = mine.length
     ? mine
         .slice(0, 20)
         .reverse()
         .map(
-          (t) => `<div class="msg mine"><div class="who">You · ${ago(t.at)}</div>${esc(t.body)}</div>
-          ${t.replies.map((r) => `<div class="msg theirs"><div class="who">${esc(r.from)} · ${ago(r.at)}</div>${esc(r.body)}</div>`).join('')}
+          (t) => `<div class="msgrow mine">${avatar('You', 'you')}<div class="msg mine"><div class="who">You · ${ago(t.at)}</div>${esc(t.body)}</div></div>
+          ${t.replies.map((r) => `<div class="msgrow">${avatar(r.from)}<div class="msg theirs"><div class="who">${esc(r.from)} · ${ago(r.at)}</div>${esc(r.body)}</div></div>`).join('')}
           ${!t.answered ? `<p class="pendingnote">Waiting for the team's next session…</p>` : ''}`,
         )
         .join('')
@@ -137,12 +151,12 @@ const viewChat = () => {
       <div class="field" style="margin-top:16px"><label for="chatbody">Your message</label>
         <textarea id="chatbody" placeholder="Write it the way you'd say it. No format required.">${esc(state.draft[state.recipient] || '')}</textarea>
       </div>
-      <div style="margin-top:12px"><button class="go" id="chatsend">Send</button></div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px"><button class="go" id="chatsend">Send</button><span class="hint" style="margin:0">⌘↵ sends · drafts survive view changes and refreshes</span></div>
     </div>`;
 };
 
 const viewIdeas = () => {
-  const ideas = (state.mail.threads || []).filter((t) => t.kind === 'idea');
+  const ideas = ((state.mail && state.mail.threads) || []).filter((t) => t.kind === 'idea');
   return `
     <h1>Ideas</h1>
     <p class="sub">Anything you think the organization should look into. Ideas go straight to the Discovery Lab, which researches them and answers with what it found.</p>
@@ -160,7 +174,7 @@ const viewIdeas = () => {
 };
 
 const viewRepos = () => {
-  const repos = (state.mail.threads || []).filter((t) => t.kind === 'repo');
+  const repos = ((state.mail && state.mail.threads) || []).filter((t) => t.kind === 'repo');
   return `
     <h1>Repos to study</h1>
     <p class="sub">Found something good on GitHub? Hand it over. The Discovery Lab reverse-engineers it, keeps what's worth keeping, and reports back before anything is copied in.</p>
@@ -260,21 +274,6 @@ const viewSpend = () => {
          <p class="hint">${m.input.toLocaleString()} in · ${m.output.toLocaleString()} out · ${m.cacheRead.toLocaleString()} cache reads, listed apart because they bill far cheaper.</p></div>`
       : `<div class="card"><p class="empty">No session transcripts found for this workspace yet — the measured number appears after the first session here.</p></div>`}
     <div class="card" style="margin-top:12px"><span class="bignum">${t.total.toLocaleString()}<small>attributed tokens across ${t.tasks} tasks — self-reported by campaigns</small></span></div>
-    <h2 class="sec">COMPANIONS — optional, and the organization runs identically without them</h2>
-    <div class="card">
-      <div class="deptrow"><span class="dot ${state.integrations?.codeburn?.installed ? 'active' : 'idle'}"></span>
-        <span class="nm">CodeBurn</span>
-        <span class="meta">the desktop deep-dive on the same transcripts this page reads</span>
-        ${state.integrations?.codeburn?.installed
-          ? '<button class="go quiet" id="opencodeburn" style="margin-left:12px">Open menu bar app</button>'
-          : '<span class="chip plain" style="margin-left:12px">brew install codeburn</span>'}
-      </div>
-      <div class="deptrow"><span class="dot ${state.integrations?.omniroute?.running ? 'active' : 'idle'}"></span>
-        <span class="nm">OmniRoute</span>
-        <span class="meta">${state.integrations?.omniroute?.running ? 'gateway answering on port 20128 — wiring guide in docs/INTEGRATIONS.md' : 'free-tier gateway, not running — see docs/INTEGRATIONS.md before wiring it'}</span>
-      </div>
-      <p class="hint">Both are the Principal's call, never the organization's: one shows spend, the other changes which models answer. F.O.R.G.E. detects them and explains them — it flips neither switch itself.</p>
-    </div>
     ${campaigns.length ? `<h2 class="sec">BY CAMPAIGN</h2><div class="card">${campaigns.map(([name, v]) => `<div class="barrow"><span>${esc(name)}</span><span class="track"><i style="width:${Math.max(3, Math.round((v.tokens / Math.max(1, campaigns[0][1].tokens)) * 100))}%"></i></span><span class="val">${v.tokens.toLocaleString()}</span></div>`).join('')}</div>` : ''}
     ${t.total === 0 ? `<div class="card" style="margin-top:12px"><p class="empty">No spend recorded yet. When sessions record outcomes with token counts, this fills in by itself — <b>honest zero beats an invented chart</b>.</p></div>` : `
     <h2 class="sec">BY DEPARTMENT</h2>
@@ -285,27 +284,44 @@ const viewSpend = () => {
 
 const viewSessions = () => {
   const info = state.wsinfo;
-  const rows = info.workspaces
+  const sess = state.sessions || { available: false, sessions: [] };
+  const fmtTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+
+  const rows = sess.sessions
+    .map(
+      (x) => `<div class="card wsrow sess">
+        <span class="av" style="background:${x.active ? 'var(--good)' : 'var(--faint)'}" title="${x.active ? 'active in the last 10 minutes' : 'ended'}">${x.active ? '●' : '○'}</span>
+        <span><span class="nm">${x.active ? 'Active session' : 'Session'} · ${ago(x.lastActive)}</span><br>
+          <span class="path">started ${ago(x.started)} · ${x.turns.toLocaleString()} turns · ${fmtTok(x.tokens)} tokens</span></span>
+        <span class="spacer"></span>
+        ${x.active ? '<span class="chip good">live</span>' : `<span class="chip plain">${new Date(x.lastActive).toLocaleDateString()}</span>`}
+      </div>`,
+    )
+    .join('');
+
+  const places = info.workspaces
     .map((w) => {
       const name = w.path.split('/').filter(Boolean).pop();
       const current = w.path === (state.ws || info.current);
-      return `<div class="card wsrow">
-        <span><span class="nm">${esc(name)}</span><br><span class="path">${esc(w.path)}</span></span>
-        <span class="spacer"></span>
-        ${current ? '<span class="chip good">Viewing</span>' : `<button class="go quiet" data-ws="${esc(w.path)}">View</button>`}
-      </div>`;
+      return `<div class="deptrow"><span class="dot ${current ? 'active' : 'idle'}"></span>
+        <span class="nm">${esc(name)}</span><span class="path" style="margin-left:8px">${esc(w.path)}</span>
+        <span class="meta">${current ? 'viewing' : `<button class="go quiet" data-ws="${esc(w.path)}">View</button>`}</span></div>`;
     })
     .join('');
+
   return `
     <h1>Sessions</h1>
-    <p class="sub">Every workspace the organization has worked in. Each keeps its own memory, its own mail and its own spending — switch to see any of them from here.</p>
-    ${rows || '<div class="card"><p class="empty">Just this one so far. Run any <b>forge</b> command in another project and it appears here.</p></div>'}
-    <h2 class="sec">WHAT THE TEAM KNOWS ABOUT THIS ONE</h2>
+    <p class="sub">Every Claude Code session in this workspace — real ones, read from the transcripts, with what each sitting actually consumed.</p>
+    ${sess.available
+      ? `${sess.total > sess.sessions.length ? `<p class="hint" style="margin:0 0 10px">Showing the ${sess.sessions.length} most recent of ${sess.total}.</p>` : ''}${rows}`
+      : '<div class="card"><p class="empty">No sessions here yet. The first time you run <b>claude</b> in this workspace, it appears within a minute.</p></div>'}
+    <h2 class="sec">PLACES THE ORGANIZATION HAS WORKED</h2>
+    <div class="card">${places || '<p class="empty">Just this one so far.</p>'}</div>
+    <h2 class="sec">WHAT THE TEAM KNOWS ABOUT THIS PLACE</h2>
     <div class="card">${Object.entries(state.live.profile)
       .filter(([, v]) => v.grade !== 'UNKNOWN' && v.value !== null && v.value !== false && !(Array.isArray(v.value) && !v.value.length))
       .map(([k, v]) => `<div class="deptrow"><span class="nm">${esc(k.replace(/([A-Z])/g, ' $1').toLowerCase())}</span><span class="meta">${esc(Array.isArray(v.value) ? v.value.join(', ') : String(v.value))} — ${esc(v.why)}</span></div>`)
-      .join('') || '<p class="empty">Nothing learned yet. It reads the workspace on its own the first time it works here.</p>'}</div>
-    <div class="card" style="margin-top:16px"><p class="empty">To put the team to work in a workspace: open a terminal there and start <b>claude</b> — waiting messages are handed over automatically at the start of the session.</p></div>`;
+      .join('') || '<p class="empty">Nothing learned yet — it reads the workspace on its own the first time it works here.</p>'}</div>`;
 };
 
 const PHASE_WORDS = {
@@ -373,29 +389,62 @@ const VIEWS = { plans: viewPlans, home: viewHome, chat: viewChat, ideas: viewIde
 
 // ─────────────────────────────────────────────────────────────────────────── shell
 
+/**
+ * The bug that made Chat unusable: refresh() repainted the whole stage every ten seconds,
+ * and repainting innerHTML destroys the input the Principal is typing into — mid-word,
+ * silently, focus thrown away. Two defences, both here rather than scattered: a live poll
+ * never repaints while typing is in progress, and every repaint captures and restores the
+ * focused control's value, selection and the thread's scroll position.
+ */
+const typingNow = () => {
+  const el = document.activeElement;
+  return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.tagName === 'SELECT') && el.closest('.stage');
+};
+
 const render = () => {
-  if (!state.org || !state.live) return;
+  if (!state.org || !state.live || !state.mail || !state.tokens || !state.rewards || !state.wsinfo) return;
+  const focus = document.activeElement;
+  const keep = focus && focus.id && (focus.tagName === 'TEXTAREA' || focus.tagName === 'INPUT')
+    ? { id: focus.id, value: focus.value, start: focus.selectionStart, end: focus.selectionEnd }
+    : null;
+  const threadEl = document.querySelector('.thread');
+  const threadScroll = threadEl ? threadEl.scrollTop : null;
   for (const b of document.querySelectorAll('.nav')) b.setAttribute('aria-current', String(b.dataset.view === state.view));
   $('#ws-name').textContent = state.live.workspace;
   $('#c-home').textContent = pendingProposals().length || '';
-  $('#c-chat').textContent = (state.mail.threads || []).filter((t) => t.answered && !seenReplies.has(t.id)).length || '';
+  $('#c-chat').textContent = ((state.mail && state.mail.threads) || []).filter((t) => t.answered && !seenReplies.has(t.id)).length || '';
   const banner = state.ws && state.ws !== state.wsinfo.current
     ? `<div class="viewingbanner">Viewing another session: ${esc(state.ws)} <button class="go quiet" id="wsback">Back to this one</button></div>`
     : '';
   $('#stage').innerHTML = banner + VIEWS[state.view]();
-  if (state.view === 'chat') $('#rcpt').value = state.recipient;
+  if (state.view === 'chat') {
+    $('#rcpt').value = state.recipient;
+    const t = document.querySelector('.thread');
+    if (t) t.scrollTop = threadScroll !== null ? threadScroll : t.scrollHeight; // newest at the bottom
+  }
+  if (keep) {
+    const el = document.getElementById(keep.id);
+    if (el) {
+      el.value = keep.value;
+      el.focus();
+      try { el.setSelectionRange(keep.start, keep.end); } catch { /* not all inputs allow it */ }
+    }
+  }
 };
 
 const seenReplies = new Set(JSON.parse(localStorage.getItem('forge-seen') || '[]'));
 const markSeen = () => {
-  for (const t of state.mail.threads || []) if (t.answered) seenReplies.add(t.id);
+  for (const t of (state.mail && state.mail.threads) || []) if (t.answered) seenReplies.add(t.id);
   try { localStorage.setItem('forge-seen', JSON.stringify([...seenReplies].slice(-200))); } catch { /* private windows */ }
 };
 
-const refresh = async () => {
-  [state.live, state.mail, state.tokens, state.rewards, state.wsinfo, state.integrations] = await Promise.all([
-    api('/api/state'), api('/api/messages'), api('/api/tokens'), api('/api/rewards'), api('/api/workspaces'), api('/api/integrations'),
+const refresh = async ({ passive = false } = {}) => {
+  [state.live, state.mail, state.tokens, state.rewards, state.wsinfo, state.sessions] = await Promise.all([
+    api('/api/state'), api('/api/messages'), api('/api/tokens'), api('/api/rewards'), api('/api/workspaces'), api('/api/sessions'),
   ]);
+  // A passive poll never repaints over live typing — the fresh data is in state and paints
+  // on the next interaction instead.
+  if (passive && typingNow()) return;
   render();
 };
 
@@ -434,11 +483,6 @@ document.addEventListener('click', async (e) => {
       ? `<span class="chip good">All checks passed</span> <span style="font-size:13.5px;color:var(--ink-2)">The constitution holds${r.warnings ? ` — ${r.warnings} minor note(s)` : ''}.</span>`
       : `<span class="chip bad">${r.failures} problem(s) found</span><pre style="font-size:12px;white-space:pre-wrap;color:var(--ink-2)">${esc(r.lines.filter((l) => l.includes('FAIL')).join('\n'))}</pre>`;
     e.target.disabled = false;
-    return;
-  }
-  if (e.target.id === 'opencodeburn') {
-    e.target.disabled = true;
-    try { await api('/api/codeburn/open', {}); e.target.textContent = 'Opened — check the menu bar'; } catch (err) { alert(err.message); e.target.disabled = false; }
     return;
   }
   if (e.target.id === 'quicksend') {
@@ -482,12 +526,14 @@ document.addEventListener('change', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'quickask') $('#quicksend').click();
   if (e.key === 'Enter' && e.target.id === 'planreq') $('#plango').click();
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && e.target.id === 'chatbody') $('#chatsend').click();
 });
 
 const LIVE = new URLSearchParams(location.search).get('live') !== '0';
 (async () => {
   const p = new URLSearchParams(location.search);
   if (VIEWS[p.get('view')]) state.view = p.get('view');
+  if (p.get('ws')) state.ws = p.get('ws'); // the server refuses anything unregistered
   state.org = await api('/api/org');
   // A deep-linked plan (?view=plans&request=...) joins the SAME await as the first paint.
   // Sequencing it after the initial render left a window where the page showed
@@ -501,8 +547,8 @@ const LIVE = new URLSearchParams(location.search).get('live') !== '0';
   if (LIVE) {
     try {
       const src = new EventSource('/api/events');
-      src.addEventListener('dirty', refresh);
+      src.addEventListener('dirty', () => refresh({ passive: true }));
     } catch { /* the timer below still covers it */ }
-    setInterval(refresh, 10000);
+    setInterval(() => refresh({ passive: true }), 12000);
   }
 })();

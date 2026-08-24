@@ -44,6 +44,12 @@ const registryPath = () => path.join(os.homedir(), '.claude', 'forge-workspaces.
 
 export const registerWorkspace = (cwd = process.cwd()) => {
   try {
+    // A test boots a deck in a mkdtemp directory and the Sessions view fills with
+    // /var/folders garbage that outlives the test by exactly one glance. Disposable
+    // locations are not places the organization has worked; they are places it was
+    // exercised — the same distinction the hook installer already enforces.
+    const abs0 = path.resolve(cwd);
+    if (/^(\/private)?\/tmp\//.test(abs0) || abs0.includes('/var/folders/') || /\/T\//.test(abs0)) return;
     const p = registryPath();
     fs.mkdirSync(path.dirname(p), { recursive: true });
     const list = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : [];

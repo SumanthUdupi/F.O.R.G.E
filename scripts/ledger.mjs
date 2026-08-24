@@ -196,10 +196,85 @@ export const estimateStages = (stages, rows) => {
  * usage. It is workspace-total truth; per-agent attribution still comes from the ledger,
  * and the Console shows both, labelled as what they are.
  */
+/**
+ * Per-transcript usage, cached by (path, mtime, size).
+ *
+ * A workspace can hold a hundred transcripts at tens of megabytes each; re-parsing them on
+ * every Console poll would make the Spending view the most expensive thing in the room.
+ * The cache key includes mtime AND size, so an actively-running session re-parses and a
+ * finished one never does.
+ */
+const usageCache = new Map();
+
+const fileUsage = (full) => {
+  let st;
+  try {
+    st = fs.statSync(full);
+  } catch {
+    return null;
+  }
+  const key = `${full}:${st.mtimeMs}:${st.size}`;
+  const hit = usageCache.get(key);
+  if (hit) return hit;
+  const u = { input: 0, output: 0, cacheRead: 0, turns: 0, mtime: st.mtime, birth: st.birthtime, size: st.size };
+  let body = '';
+  try {
+    body = fs.readFileSync(full, 'utf8');
+  } catch {
+    return null;
+  }
+  for (const line of body.split('\n')) {
+    if (!line.includes('"usage"')) continue;
+    try {
+      const usage = JSON.parse(line).message?.usage;
+      if (!usage) continue;
+      u.input += (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+      u.cacheRead += usage.cache_read_input_tokens || 0;
+      u.output += usage.output_tokens || 0;
+      u.turns += 1;
+    } catch { /* one corrupt line is one corrupt line */ }
+  }
+  usageCache.set(key, u);
+  if (usageCache.size > 400) usageCache.delete(usageCache.keys().next().value);
+  return u;
+};
+
+const transcriptDir = (cwd) => path.join(process.env.HOME || '', '.claude', 'projects', path.resolve(cwd).replace(/[/.]/g, '-'));
+
+/**
+ * The Claude Code sessions of THIS workspace — the real ones, from the transcripts.
+ *
+ * The Sessions view listed registered workspaces and called them sessions, and the
+ * Principal correctly objected: a workspace is a place, a session is a sitting. Each
+ * transcript file IS one session, with its own start, last activity, turns and spend.
+ */
+export const listSessions = (cwd = process.cwd(), { limit = 15 } = {}) => {
+  const dir = transcriptDir(cwd);
+  if (!fs.existsSync(dir)) return { available: false, sessions: [] };
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.jsonl'))
+    .map((f) => ({ f, st: fs.statSync(path.join(dir, f)) }))
+    .sort((a, b) => b.st.mtimeMs - a.st.mtimeMs);
+  const sessions = [];
+  for (const { f } of files.slice(0, limit)) {
+    const u = fileUsage(path.join(dir, f));
+    if (!u) continue;
+    sessions.push({
+      id: f.replace(/\.jsonl$/, ''),
+      started: u.birth,
+      lastActive: u.mtime,
+      turns: u.turns,
+      tokens: u.input + u.output,
+      cacheRead: u.cacheRead,
+      active: Date.now() - u.mtime.getTime() < 10 * 60 * 1000,
+    });
+  }
+  return { available: true, total: files.length, sessions };
+};
+
 export const measuredSpend = (cwd = process.cwd()) => {
-  const home = path.join(process.env.HOME || '', '.claude', 'projects');
-  const flat = path.resolve(cwd).replace(/[/.]/g, '-');
-  const dir = path.join(home, flat);
+  const dir = transcriptDir(cwd);
   if (!fs.existsSync(dir)) {
     return { available: false, why: 'no session transcripts found for this workspace', input: 0, output: 0, cacheRead: 0, sessions: 0 };
   }
@@ -209,25 +284,12 @@ export const measuredSpend = (cwd = process.cwd()) => {
   let sessions = 0;
   for (const f of fs.readdirSync(dir)) {
     if (!f.endsWith('.jsonl')) continue;
+    const u = fileUsage(path.join(dir, f));
+    if (!u) continue;
     sessions += 1;
-    let body = '';
-    try {
-      body = fs.readFileSync(path.join(dir, f), 'utf8');
-    } catch {
-      continue;
-    }
-    for (const line of body.split('\n')) {
-      if (!line.includes('"usage"')) continue;
-      try {
-        const u = JSON.parse(line).message?.usage;
-        if (!u) continue;
-        input += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0);
-        cacheRead += u.cache_read_input_tokens || 0;
-        output += u.output_tokens || 0;
-      } catch {
-        /* one corrupt line is one corrupt line */
-      }
-    }
+    input += u.input;
+    output += u.output;
+    cacheRead += u.cacheRead;
   }
   return { available: true, input, output, cacheRead, sessions };
 };

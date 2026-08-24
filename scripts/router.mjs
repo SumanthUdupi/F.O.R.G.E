@@ -85,7 +85,7 @@ export const PRIOR = { reliability: 0.7, recent: 0.7, availability: 1 };
  * Article 145: never route on cost alone — cost is the smallest weight and cannot reach
  * zero, so a cheap agent can win a tie and can never win on price alone.
  */
-export const scoreAgent = (agent, capability, org, memory = {}) => {
+export const scoreAgent = (agent, capability, org, memory = {}, bias = {}) => {
   const w = org.routing.score;
   const m = memory[agent.name] || {};
   const caps = agent.capabilities || [];
@@ -112,10 +112,17 @@ export const scoreAgent = (agent, capability, org, memory = {}) => {
     score = Math.max(score * p.floor, score * (1 - p.consecutive_failures_on_class * streak));
   }
 
+  // The Principal's own thumb on the scale for this workspace. It multiplies AFTER the
+  // measured terms, so a preference nudges a choice between qualified agents and can
+  // never hand work to someone who lacks the capability — that check happened above.
+  const nudge = bias[agent.name];
+  if (nudge) score *= nudge;
+
   return {
     agent,
     capability,
     score: Number(score.toFixed(4)),
+    biased: nudge ? (nudge > 1 ? 'preferred here' : 'de-preferred here') : null,
     parts: { match: Number(match.toFixed(3)), reliability, recent, tierCost, availability, streak },
   };
 };
@@ -126,13 +133,13 @@ export const scoreAgent = (agent, capability, org, memory = {}) => {
  * Managers are excluded from staffing. A manager who takes the task has become a
  * specialist with a title, which RULE 005 exists to prevent -- and doctor asserts it.
  */
-export const selectAgents = (capabilities, org, memory = {}) => {
+export const selectAgents = (capabilities, org, memory = {}, bias = {}) => {
   const chosen = [];
   const considered = [];
   for (const cap of [...new Set(capabilities)]) {
     const ranked = org.all
       .filter((a) => a.role === 'specialist')
-      .map((a) => scoreAgent(a, cap, org, memory))
+      .map((a) => scoreAgent(a, cap, org, memory, bias))
       .filter(Boolean)
       .sort((a, b) => b.score - a.score || a.agent.id.localeCompare(b.agent.id));
     if (!ranked.length) continue;

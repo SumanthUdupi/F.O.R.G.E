@@ -65,7 +65,7 @@ export const batch = (stages, maxWidth) => {
  * neutral prior and the plan is the cold-start plan. Passing it is what makes the tenth
  * campaign staffed better than the first.
  */
-export const composeVector = (request, org, { memory = {}, mode: modeOverride = null } = {}) => {
+export const composeVector = (request, org, { memory = {}, mode: modeOverride = null, bias = {} } = {}) => {
   const { routing, constitution } = org;
   const decided = detectMode(request, routing, modeOverride);
   const rules = matchRules(request, routing);
@@ -105,7 +105,7 @@ export const composeVector = (request, org, { memory = {}, mode: modeOverride = 
   }
 
   const allCaps = [...capsByPhase.values()].flatMap((m) => [...m.keys()]);
-  const { staffed, considered } = selectAgents(allCaps, org, memory);
+  const { staffed, considered } = selectAgents(allCaps, org, memory, bias);
   const agentFor = new Map();
   for (const s of staffed) for (const c of s.capabilities) agentFor.set(c, s);
 
@@ -159,7 +159,7 @@ export const composeVector = (request, org, { memory = {}, mode: modeOverride = 
     if (s.capability === 'security') s.mandatory = s.mandatory || 'a security review is not a nice-to-have once the request raised one';
   }
   if (stages.some((s) => s.writes) && !stages.some(verified)) {
-    const forced = selectAgents(['review', 'test'], org, memory);
+    const forced = selectAgents(['review', 'test'], org, memory, bias);
     const prior = stages.map((s) => s.id);
     for (const pick of forced.staffed) {
       n += 1;

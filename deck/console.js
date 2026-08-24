@@ -74,6 +74,50 @@ const OUTCOME_WORDS = { ok: 'went well', partial: 'partly done', fail: "didn't w
 
 // ── drawer bodies — every old view, rehomed ──────────────────────────────────────────
 
+
+/**
+ * The configuration section — the Principal's hand on this agent.
+ *
+ * Edits land in this workspace's tuning overlay, never in the shipped registry, and each
+ * field carries a Revert that removes the override entirely rather than writing the
+ * default back — so an upgrade to the shipped roster still reaches a partly-tuned agent.
+ * Shape (name, division, what they own) is deliberately absent, and the footer says why.
+ */
+const configSection = (name, a) => {
+  const t = (state.live && state.live.tuning ? state.live.tuning[name] : null) || {};
+  const tunedCount = Object.keys(t).length;
+  const row = (field, label, help, control, isTuned) => `
+    <div class="cfgrow">
+      <div class="cfghead"><b>${esc(label)}</b>${isTuned ? '<span class="chip warn">tuned here</span>' : ''}
+        ${isTuned ? `<button class="linkbtn" data-revert="${esc(field)}" data-agent="${esc(name)}">revert</button>` : ''}</div>
+      ${control}
+      <p class="hint" style="margin:4px 0 0">${esc(help)}</p>
+    </div>`;
+
+  const tierOpts = ['lean', 'standard', 'deep'].map((o) => `<option value="${o}"${(t.model || a.model) === o ? ' selected' : ''}>${o}</option>`).join('');
+  const biasOpts = [['default', 'no preference'], ['prefer', 'prefer here'], ['avoid', 'avoid here']]
+    .map((x) => `<option value="${x[0]}"${(t.routingBias || 'default') === x[0] ? ' selected' : ''}>${x[1]}</option>`).join('');
+
+  return `<details class="cfg"${tunedCount ? ' open' : ''}>
+    <summary>Configuration${tunedCount ? ` <span class="chip warn">${tunedCount} tuned</span>` : ''}</summary>
+    ${row('model', 'Model tier', 'Lean is cheap and fast. Deep is for ambiguity, architecture, and anything irreversible.',
+      `<select data-cfg="model" data-agent="${esc(name)}">${tierOpts}</select>`, t.model !== undefined)}
+    ${row('stance', 'How they work', 'The disposition that shapes their judgement.',
+      `<textarea data-cfg="stance" data-agent="${esc(name)}" rows="3">${esc(t.stance !== undefined ? t.stance : a.stance)}</textarea>`, t.stance !== undefined)}
+    ${row('refuses', "What they won't do", 'The sentence that makes them decline something.',
+      `<textarea data-cfg="refuses" data-agent="${esc(name)}" rows="3">${esc(t.refuses !== undefined ? t.refuses : a.refuses)}</textarea>`, t.refuses !== undefined)}
+    ${row('instructions', 'Standing instructions', 'One per line. Added to their prompt in this workspace only.',
+      `<textarea data-cfg="instructions" data-agent="${esc(name)}" rows="3" placeholder="one instruction per line">${esc((t.instructions || []).join('\n'))}</textarea>`, t.instructions !== undefined)}
+    ${row('routingBias', 'Routing preference', 'Nudges the planner between qualified agents. It can never give work to someone without the capability.',
+      `<select data-cfg="routingBias" data-agent="${esc(name)}">${biasOpts}</select>`, t.routingBias !== undefined)}
+    <div class="cfgfoot">
+      <button class="go" data-savecfg="${esc(name)}">Save changes</button>
+      ${tunedCount ? `<button class="go quiet" data-clearcfg="${esc(name)}">Reset this agent</button>` : ''}
+      <p class="hint" style="margin:8px 0 0">Saved for <b>${esc((state.live && state.live.workspace) || 'this workspace')}</b> only — the shipped organization is untouched. Name, division and what they own live in <code>registry/roster.yaml</code>, where the constitutional audit can check them.</p>
+    </div>
+  </details>`;
+};
+
 const personDrawer = (name) => {
   const a = agentOf(name);
   if (!a) return `<p class="empty">Nobody called ${esc(name)} works here.</p>`;
@@ -92,6 +136,7 @@ const personDrawer = (name) => {
     <div class="dhead">${avatar(name)}<div><h2>${esc(name)}</h2><p>${esc(a.divisionName)} · ${esc(a.role)}${m ? ` · <b class="${m.reliability >= 0.75 ? 'ok' : m.reliability < 0.55 ? 'bad' : ''}">${Math.round(m.reliability * 100)}% reliable</b>` : ''}</p></div></div>
     <details class="dmeta"><summary>What they own, and what they refuse</summary>
       <p><b>Owns:</b> ${esc(a.owns)}</p><p><b>Won't do:</b> ${esc(a.refuses)}</p></details>
+    ${configSection(name, a)}
     <div class="thread">${thread || `<p class="empty">No conversation yet. Say hello.</p>`}</div>
     ${state.run ? `<div class="msgrow">${avatar('the organization')}<div class="msg theirs live"><div class="who">working<span class="workdots"></span></div>${esc(state.run.text || '')}${state.run.tool ? `<div class="toolline">using ${esc(state.run.tool)}…</div>` : ''}</div></div><p class="pendingnote"><button class="go quiet" id="runkill">Stop</button></p>` : ''}
     <div class="composer2">
@@ -394,6 +439,40 @@ document.addEventListener('click', async (e) => {
 
   if (e.target.closest('.modeopt')) { state.mode = e.target.closest('.modeopt').dataset.mode; render(); return; }
 
+  if (e.target.dataset.savecfg) {
+    const agent = e.target.dataset.savecfg;
+    e.target.disabled = true;
+    const errors = [];
+    for (const el of [...document.querySelectorAll('[data-cfg]')]) {
+      if (el.dataset.agent !== agent) continue;
+      const field = el.dataset.cfg;
+      let value = el.value;
+      if (field === 'instructions') value = value.split('\n').map((x) => x.trim()).filter(Boolean);
+      // Send only what actually differs. Sending every box would turn "I edited one
+      // field" into five overrides that stop tracking the shipped registry.
+      const cur = (state.live && state.live.tuning ? state.live.tuning[agent] : null) || {};
+      const shipped = agentOf(agent) || {};
+      const base = field === 'instructions'
+        ? (cur.instructions || [])
+        : (cur[field] !== undefined ? cur[field] : (field === 'routingBias' ? 'default' : shipped[field]));
+      const same = Array.isArray(value) ? JSON.stringify(value) === JSON.stringify(base) : String(value) === String(base);
+      if (same) continue;
+      try { await api('/api/tuning', { agent, field, value }); } catch (err) { errors.push(err.message); }
+    }
+    await refresh();
+    if (errors.length) alert(errors.join('\n'));
+    return;
+  }
+  if (e.target.dataset.revert) {
+    await api('/api/tuning', { agent: e.target.dataset.agent, field: e.target.dataset.revert, value: null });
+    await refresh();
+    return;
+  }
+  if (e.target.dataset.clearcfg) {
+    await api('/api/tuning/clear', { agent: e.target.dataset.clearcfg });
+    await refresh();
+    return;
+  }
   if (e.target.id === 'chatsend') {
     const v = $('#chatbody').value.trim();
     if (!v || state.run) return;

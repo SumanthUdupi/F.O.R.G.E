@@ -457,3 +457,87 @@ describe('the agent board answers "who is working on what"', () => {
     }
   });
 });
+
+describe('per-agent tuning — the Principal may change behaviour, never shape', () => {
+  let tws;
+  before(() => { tws = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-tune-')); });
+
+  test('behaviour fields are accepted and merged over the shipped agent', async () => {
+    const { setTuning, effectiveAgent } = await import('../scripts/tuning.mjs');
+    const { load } = await import('../scripts/core.mjs');
+    const o = load();
+    setTuning({ agent: 'code-reviewer', field: 'model', value: 'lean' }, o, tws);
+    setTuning({ agent: 'code-reviewer', field: 'instructions', value: ['name the file and line'] }, o, tws);
+    const e = effectiveAgent(o.byName.get('code-reviewer'), tws);
+    assert.equal(e.model, 'lean');
+    assert.deepEqual(e.instructions, ['name the file and line']);
+    assert.deepEqual(e.tuned.sort(), ['instructions', 'model']);
+    assert.equal(e.shipped.model, 'deep', 'the shipped definition must survive untouched');
+  });
+
+  test('shape fields are refused with the reason, on every one of them', async () => {
+    const { setTuning, PROTECTED } = await import('../scripts/tuning.mjs');
+    const { load } = await import('../scripts/core.mjs');
+    const o = load();
+    for (const field of PROTECTED) {
+      assert.throws(
+        () => setTuning({ agent: 'code-reviewer', field, value: 'x' }, o, tws),
+        /shape, not its behaviour/,
+        `${field} was editable from the Console`,
+      );
+    }
+    assert.throws(() => setTuning({ agent: 'code-reviewer', field: 'invented', value: 'x' }, o, tws), /not a tunable field/);
+    assert.throws(() => setTuning({ agent: 'nobody', field: 'model', value: 'lean' }, o, tws), /nobody on the roster/);
+  });
+
+  test('an unknown model tier is refused rather than stored', async () => {
+    const { setTuning } = await import('../scripts/tuning.mjs');
+    const { load } = await import('../scripts/core.mjs');
+    assert.throws(() => setTuning({ agent: 'code-reviewer', field: 'model', value: 'genius' }, load(), tws), /must be one of/);
+  });
+
+  test('reverting a field removes the override so the agent tracks the registry again', async () => {
+    const { setTuning, effectiveAgent, readTuning } = await import('../scripts/tuning.mjs');
+    const { load } = await import('../scripts/core.mjs');
+    const o = load();
+    setTuning({ agent: 'code-reviewer', field: 'model', value: null }, o, tws);
+    assert.equal(readTuning(tws)['code-reviewer'].model, undefined, 'the override was written back as a copy instead of removed');
+    const e = effectiveAgent(o.byName.get('code-reviewer'), tws);
+    assert.equal(e.model, o.byName.get('code-reviewer').model, 'the agent no longer tracks the shipped tier');
+    assert.ok(!e.tuned.includes('model'));
+  });
+
+  test('routing bias nudges between qualified agents and never past capability', async () => {
+    const { setTuning, routingBias } = await import('../scripts/tuning.mjs');
+    const { selectAgents } = await import('../scripts/router.mjs');
+    const { load } = await import('../scripts/core.mjs');
+    const o = load();
+    const cold = selectAgents(['review'], o, {}, {}).staffed[0].agent.name;
+    setTuning({ agent: cold, field: 'routingBias', value: 'avoid' }, o, tws);
+    const warm = selectAgents(['review'], o, {}, routingBias(tws)).staffed[0].agent.name;
+    assert.notEqual(warm, cold, 'an avoid preference did not move the choice');
+    // The nudged-away agent must still be someone who HAS the capability — bias reorders,
+    // it never invents qualification.
+    assert.ok((o.byName.get(warm).capabilities || []).includes('review'));
+    setTuning({ agent: cold, field: 'routingBias', value: null }, o, tws);
+  });
+
+  test('the endpoints accept behaviour and refuse shape', async () => {
+    const ok = await post('/api/tuning', { agent: 'qa-manager', field: 'model', value: 'lean' });
+    assert.equal(ok.status, 200);
+    const bad = await post('/api/tuning', { agent: 'qa-manager', field: 'division', value: 'DIV-ENG' });
+    assert.equal(bad.status, 400);
+    assert.match(bad.json.error, /shape/);
+    assert.equal((await post('/api/tuning/clear', { agent: 'qa-manager' })).status, 200);
+  });
+
+  test('the config section reaches the shipped client with every field', async () => {
+    const js = (await get('/console.js')).body;
+    assert.ok(js.includes('configSection'), 'the configuration section is missing');
+    for (const f of ['model', 'stance', 'refuses', 'instructions', 'routingBias']) {
+      assert.ok(js.includes(`data-cfg="${f}"`), `the ${f} control is missing from the client`);
+    }
+    assert.ok(js.includes('data-revert'), 'per-field revert is missing');
+    assert.ok(js.includes('registry/roster.yaml'), 'the client does not say where shape lives');
+  });
+});

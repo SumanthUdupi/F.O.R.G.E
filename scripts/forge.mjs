@@ -109,7 +109,8 @@ switch (cmd) {
     const request = positional().join(' ');
     if (!request) die('plan needs a request: forge plan "add rate limiting to the public api"');
     const o = org();
-    const v = composeVector(request, o, { memory: currentMemory(), mode: flag('mode') });
+    const { routingBias } = await import('./tuning.mjs');
+    const v = composeVector(request, o, { memory: currentMemory(), mode: flag('mode'), bias: routingBias() });
     const cost = estimateStages(v.stages, readLedger());
     if (flag('json')) console.log(JSON.stringify({ ...v, cost }, null, 2));
     else {

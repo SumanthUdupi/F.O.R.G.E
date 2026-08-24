@@ -52,6 +52,19 @@ const step = async (name, fn) => {
     await until(() => qa('.msg.mine').some((m) => m.textContent.includes(STAMP)), 10000);
   });
 
+  await step('every agent has a configuration section the Principal can edit', async () => {
+    await until(() => q('.cfg'));
+    q('.cfg').open = true;
+    for (const f of ['model', 'stance', 'refuses', 'instructions', 'routingBias']) {
+      if (!q('[data-cfg="' + f + '"]')) throw new Error('no control for ' + f);
+    }
+    const sel = q('[data-cfg="model"]');
+    sel.value = sel.value === 'lean' ? 'deep' : 'lean';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    click('[data-savecfg]');
+    await until(() => document.body.textContent.includes('tuned here'), 10000);
+  });
+
   await step('a draft survives closing the drawer and coming back', async () => {
     type('#chatbody', `draft ${STAMP}`);
     click('#drawerclose');

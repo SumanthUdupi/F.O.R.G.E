@@ -19,6 +19,6 @@ node scripts/forge.mjs deck --vscode              # open the office (in a VS Cod
 
 [In VS Code](./vscode/README.md) · [The charter](./CHARTER.md) · [What it refused to become](./docs/STUDIES.md) · [The hooks](./docs/HOOKS.md) · [How it learns](./docs/EVOLUTION.md) · [Extending it](./docs/EXTENDING.md)
 
-MIT · 172 tests · CI on 3 OS × 3 Node · governed by its own board
+MIT · 179 tests · CI on 3 OS × 3 Node · governed by its own board
 
 </div>

@@ -31,6 +31,7 @@ import { profileWorkspace, loadOverlay, propose, applyProposal } from './learn.m
 import { runDoctor } from './doctor.mjs';
 import * as mailbox from './mailbox.mjs';
 import { allSessions, orgActivity, agentBoard, connectedEditors } from './activity.mjs';
+import { readTuning, setTuning, clearAgent, effectiveAgent, TUNABLE, PROTECTED } from './tuning.mjs';
 import { startRun, getRun, killRun, activeRuns } from './runner.mjs';
 
 const DECK = path.join(ROOT, 'deck');
@@ -149,6 +150,7 @@ export const statePayload = (org, cwd = process.cwd()) => {
     proposals,
     overlay: overlay.adaptations || [],
     status,
+    tuning: readTuning(cwd),
     health: (() => {
       const r = runDoctor(org);
       return { ok: r.ok, failures: r.failures, warnings: r.warnings };
@@ -327,7 +329,8 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
         if (!request.trim()) return json(res, { error: 'a plan needs a request' }, 400);
         const memory = derive(readLedger(wcwd)).memory;
         const mode = ['direct', 'focused', 'standard', 'campaign'].includes(body.mode) ? body.mode : null;
-        const vector = composeVector(request, org, { memory, mode });
+        const { routingBias } = await import('./tuning.mjs');
+        const vector = composeVector(request, org, { memory, mode, bias: routingBias(wcwd) });
         return json(res, { ...vector, cost: estimateStages(vector.stages, readLedger(wcwd)) });
       }
 
@@ -421,6 +424,24 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
       if (p === '/api/activity') return json(res, orgActivity());
       if (p === '/api/agent-board') return json(res, agentBoard(org));
       if (p === '/api/editors') return json(res, { editors: connectedEditors() });
+
+      // Per-agent tuning: the Principal's hand on any agent, stored per workspace.
+      if (p === '/api/tuning' && req.method === 'GET') {
+        return json(res, { tuning: readTuning(wcwd), fields: TUNABLE, protectedFields: PROTECTED });
+      }
+      if (p === '/api/tuning' && req.method === 'POST') {
+        const body = await readBody(req);
+        try {
+          return json(res, { agent: body.agent, entry: setTuning({ agent: body.agent, field: body.field, value: body.value }, org, wcwd) });
+        } catch (e) {
+          return json(res, { error: e.message }, 400);
+        }
+      }
+      if (p === '/api/tuning/clear' && req.method === 'POST') {
+        const body = await readBody(req);
+        clearAgent(String(body.agent || ''), wcwd);
+        return json(res, { cleared: body.agent });
+      }
 
       if (p === '/api/workspaces') {
         return json(res, { current: cwd, viewing: wcwd, workspaces: listWorkspaces() });

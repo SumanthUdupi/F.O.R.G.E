@@ -71,7 +71,13 @@ export const startRun = ({ to, body, mode = 'ask', threadId = null }, { cwd, onE
 
   let child;
   try {
-    child = spawn(BIN(), args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
+    // A .mjs runtime (the test stub) is spawned through node itself — Windows cannot
+    // execute a script file directly, and a shell:true spawn would reopen quoting bugs.
+    const bin = BIN();
+    const viaNode = bin.endsWith('.mjs') || bin.endsWith('.js');
+    child = viaNode
+      ? spawn(process.execPath, [bin, ...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env })
+      : spawn(bin, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], env: process.env });
   } catch (e) {
     return { id, error: e.message };
   }

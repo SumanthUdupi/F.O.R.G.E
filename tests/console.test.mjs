@@ -258,7 +258,11 @@ describe('the Console dispatches Claude Code itself — with a stub runtime unde
   let ws2;
   before(async () => {
     ws2 = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-run-'));
-    process.env.FORGE_CLAUDE_BIN = path.join(path.dirname(new URL(import.meta.url).pathname), 'fixtures', 'claude-stub.sh');
+    // fileURLToPath, never new URL(...).pathname — the latter yields /D:/a/repo on
+    // Windows, which is this repository's own most-documented trap, written here anyway
+    // and caught by the same CI matrix it documents.
+    const { fileURLToPath } = await import('node:url');
+    process.env.FORGE_CLAUDE_BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'claude-stub.mjs');
     deck2 = await startDeck({ port: 0, cwd: ws2 });
     base2 = `http://127.0.0.1:${deck2.port}`;
   });

@@ -110,6 +110,18 @@ export const install = (org, { apply = false, force = false, root = home() } = {
  * The full payloads and the reasoning live in docs/HOOKS.md.
  */
 export const installHooks = ({ root = home(), forgeHome = ROOT } = {}) => {
+  // The path baked into env.FORGE_HOME outlives this call by months. A test once ran this
+  // from a temporary clone with root accidentally defaulted, and the Principal's live
+  // hooks pointed at a directory that was deleted minutes later — the session briefing
+  // went silently empty. So: the home this writes must actually be an organization, and
+  // a disposable location is refused rather than trusted.
+  const resolved = path.resolve(forgeHome);
+  if (!fs.existsSync(path.join(resolved, 'scripts', 'forge.mjs'))) {
+    throw new Error(`refusing: ${resolved} does not contain scripts/forge.mjs`);
+  }
+  if (/^(\/private)?\/tmp\//.test(resolved) || /\/T\//.test(resolved)) {
+    throw new Error(`refusing: ${resolved} is a temporary directory — hooks would outlive it`);
+  }
   const file = path.join(root, 'settings.json');
   const settings = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
   const before = Object.keys(settings).length;

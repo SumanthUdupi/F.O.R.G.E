@@ -12,7 +12,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const state = {
-  org: null, live: null, mail: null, tokens: null, rewards: null, wsinfo: null,
+  org: null, live: null, mail: null, tokens: null, rewards: null, wsinfo: null, integrations: null,
   view: 'home', ws: null, recipient: 'chair', draft: {},
 };
 
@@ -260,6 +260,21 @@ const viewSpend = () => {
          <p class="hint">${m.input.toLocaleString()} in · ${m.output.toLocaleString()} out · ${m.cacheRead.toLocaleString()} cache reads, listed apart because they bill far cheaper.</p></div>`
       : `<div class="card"><p class="empty">No session transcripts found for this workspace yet — the measured number appears after the first session here.</p></div>`}
     <div class="card" style="margin-top:12px"><span class="bignum">${t.total.toLocaleString()}<small>attributed tokens across ${t.tasks} tasks — self-reported by campaigns</small></span></div>
+    <h2 class="sec">COMPANIONS — optional, and the organization runs identically without them</h2>
+    <div class="card">
+      <div class="deptrow"><span class="dot ${state.integrations?.codeburn?.installed ? 'active' : 'idle'}"></span>
+        <span class="nm">CodeBurn</span>
+        <span class="meta">the desktop deep-dive on the same transcripts this page reads</span>
+        ${state.integrations?.codeburn?.installed
+          ? '<button class="go quiet" id="opencodeburn" style="margin-left:12px">Open menu bar app</button>'
+          : '<span class="chip plain" style="margin-left:12px">brew install codeburn</span>'}
+      </div>
+      <div class="deptrow"><span class="dot ${state.integrations?.omniroute?.running ? 'active' : 'idle'}"></span>
+        <span class="nm">OmniRoute</span>
+        <span class="meta">${state.integrations?.omniroute?.running ? 'gateway answering on port 20128 — wiring guide in docs/INTEGRATIONS.md' : 'free-tier gateway, not running — see docs/INTEGRATIONS.md before wiring it'}</span>
+      </div>
+      <p class="hint">Both are the Principal's call, never the organization's: one shows spend, the other changes which models answer. F.O.R.G.E. detects them and explains them — it flips neither switch itself.</p>
+    </div>
     ${campaigns.length ? `<h2 class="sec">BY CAMPAIGN</h2><div class="card">${campaigns.map(([name, v]) => `<div class="barrow"><span>${esc(name)}</span><span class="track"><i style="width:${Math.max(3, Math.round((v.tokens / Math.max(1, campaigns[0][1].tokens)) * 100))}%"></i></span><span class="val">${v.tokens.toLocaleString()}</span></div>`).join('')}</div>` : ''}
     ${t.total === 0 ? `<div class="card" style="margin-top:12px"><p class="empty">No spend recorded yet. When sessions record outcomes with token counts, this fills in by itself — <b>honest zero beats an invented chart</b>.</p></div>` : `
     <h2 class="sec">BY DEPARTMENT</h2>
@@ -378,8 +393,8 @@ const markSeen = () => {
 };
 
 const refresh = async () => {
-  [state.live, state.mail, state.tokens, state.rewards, state.wsinfo] = await Promise.all([
-    api('/api/state'), api('/api/messages'), api('/api/tokens'), api('/api/rewards'), api('/api/workspaces'),
+  [state.live, state.mail, state.tokens, state.rewards, state.wsinfo, state.integrations] = await Promise.all([
+    api('/api/state'), api('/api/messages'), api('/api/tokens'), api('/api/rewards'), api('/api/workspaces'), api('/api/integrations'),
   ]);
   render();
 };
@@ -419,6 +434,11 @@ document.addEventListener('click', async (e) => {
       ? `<span class="chip good">All checks passed</span> <span style="font-size:13.5px;color:var(--ink-2)">The constitution holds${r.warnings ? ` — ${r.warnings} minor note(s)` : ''}.</span>`
       : `<span class="chip bad">${r.failures} problem(s) found</span><pre style="font-size:12px;white-space:pre-wrap;color:var(--ink-2)">${esc(r.lines.filter((l) => l.includes('FAIL')).join('\n'))}</pre>`;
     e.target.disabled = false;
+    return;
+  }
+  if (e.target.id === 'opencodeburn') {
+    e.target.disabled = true;
+    try { await api('/api/codeburn/open', {}); e.target.textContent = 'Opened — check the menu bar'; } catch (err) { alert(err.message); e.target.disabled = false; }
     return;
   }
   if (e.target.id === 'quicksend') {

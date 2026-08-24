@@ -22,6 +22,7 @@
  */
 
 import http from 'node:http';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { load, ROOT, resolveContract, registerWorkspace, listWorkspaces } from './core.mjs';
@@ -365,6 +366,41 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
         }
       }
       if (p === '/api/tokens') return json(res, tokensPayload(org, wcwd));
+
+      if (p === '/api/integrations') {
+        // Companions, not dependencies: F.O.R.G.E. runs identically without either. The
+        // Console reports what is present on THIS machine and starts nothing by itself.
+        let codeburn = false;
+        try {
+          execFileSync('which', ['codeburn'], { stdio: 'ignore' });
+          codeburn = true;
+        } catch { /* not installed */ }
+        let omniroute = false;
+        try {
+          const ctl = new AbortController();
+          const t = setTimeout(() => ctl.abort(), 400);
+          const r = await fetch('http://127.0.0.1:20128/v1/models', { signal: ctl.signal });
+          clearTimeout(t);
+          omniroute = r.ok || r.status === 401; // answering at all means the gateway is up
+        } catch { /* not running */ }
+        return json(res, { codeburn: { installed: codeburn }, omniroute: { running: omniroute } });
+      }
+
+      if (p === '/api/codeburn/open' && req.method === 'POST') {
+        // Launch the Principal's own installed app, at their click. Detached, so the deck
+        // never becomes its parent; refused plainly when it is not installed.
+        try {
+          execFileSync('which', ['codeburn'], { stdio: 'ignore' });
+        } catch {
+          return json(res, { error: 'CodeBurn is not installed — brew install codeburn' }, 400);
+        }
+        try {
+          spawn('codeburn', ['menubar'], { stdio: 'ignore', detached: true }).unref();
+          return json(res, { opened: true });
+        } catch (e) {
+          return json(res, { error: e.message }, 500);
+        }
+      }
       if (p === '/api/rewards') return json(res, rewardsPayload(wcwd));
       if (p === '/api/workspaces') {
         return json(res, { current: cwd, viewing: wcwd, workspaces: listWorkspaces() });

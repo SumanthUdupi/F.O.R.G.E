@@ -161,3 +161,24 @@ describe('the ledger duty is conveyed, not just decided', () => {
     assert.match(s, /--campaign/, 'the duty does not attribute to a campaign');
   });
 });
+
+describe('the launch page cannot drift from the organization it sells', () => {
+  test('readme.html carries the real counts and every division by name', () => {
+    // The page is marketing, which is exactly why it must not be allowed to lie: a count
+    // that drifts from the registry turns the whole pitch into fiction.
+    const html = fs.readFileSync(path.join(paths.agents, '..', 'readme.html'), 'utf8');
+    const specialists = org.all.filter((a) => a.role === 'specialist').length;
+    assert.ok(html.includes(`${specialists} specialists`), `page does not say ${specialists} specialists`);
+    assert.ok(html.includes(`<b>${org.all.length}</b> AGENTS`), 'agent count drifted');
+    assert.ok(html.includes(`<b>${org.constitution.rules.length}</b> RULES`), 'rule count drifted');
+    for (const d of org.constitution.divisions) {
+      assert.ok(html.includes(`<b>${d.name}</b>`), `division ${d.name} missing from the page`);
+    }
+    for (const g of org.constitution.gates) {
+      // First WORD of the title, punctuation stripped — "Credentials, keys and access"
+      // must match the page's "credentials" chip, and the comma is not part of the word.
+      const word = g.title.split(' ')[0].replace(/[^a-z]/gi, '').toLowerCase();
+      assert.ok(html.toLowerCase().includes(word), `gate "${g.title}" not represented`);
+    }
+  });
+});

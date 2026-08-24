@@ -221,3 +221,11 @@ describe('one-command hook install', () => {
     assert.ok(out.env.FORGE_HOME);
   });
 });
+
+describe('companions are detected, never started', () => {
+  test('/api/integrations reports installed/running as booleans with no side effects', async () => {
+    const r = JSON.parse((await get('/api/integrations')).body);
+    assert.equal(typeof r.codeburn.installed, 'boolean');
+    assert.equal(typeof r.omniroute.running, 'boolean');
+  });
+});

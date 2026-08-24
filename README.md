@@ -276,6 +276,8 @@ tests/                      146 tests, node:test, zero dependencies
 | `forge deck` | the Console + Ops deck, on loopback |
 | `forge inbox` / `forge reply` | mail from the Principal, and how the org answers it |
 | `forge context` | the session briefing — silent when nothing is known |
+| `forge inbox` | mail from the Principal waiting for an answer |
+| `forge reply <id> --as <agent>` | answer it, as the agent that owns the question |
 
 ## Lineage
 

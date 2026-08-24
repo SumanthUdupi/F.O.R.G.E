@@ -130,16 +130,18 @@ decision per card, for someone who never wants to see a JSON key. The dense inst
 panel it replaced is gone; everything it showed lives here, one disclosure deeper instead
 of all at once. Zero dependencies, loopback only.
 
-| Console view | What it does |
+| Where in the office | What lives there |
 |---|---|
-| **Home** | **The Office** — your organization drawn as the place it is: twelve rooms around the board's hex table (no head chair), every specialist at a desk, live lamps per department, envelopes hanging at the door where mail waits, typing animation where a run is working, a flame over a streak-holder's desk, and a courier walking your message over when you send. Click a room to open the department, click a person to chat with them. Canvas 2D, zero dependencies, honest with reduced-motion. Below it: what needs your decision, with the Approve button. |
-| **Chat** | Write to any seat, manager or specialist — and choose **Ask** (answers only, plan mode, cannot write) or **Do** (a live work order: the Console spawns Claude Code headlessly in the workspace, streams the run into the thread, and files the answer as a reply). Your auth, hooks and gates all apply, because it *is* Claude Code underneath. No runtime available? The message queues as mail and the next session delivers it — the thread reads the same either way. |
-| **Ideas** | One textarea, straight to the Discovery Lab, answers threaded underneath. |
-| **Repos to study** | Paste a GitHub link and what you want from it. The Lab reverse-engineers it and reports back before anything is copied in. |
-| **Plans** | Type what you want; see who would work on it, in what order, where it pauses for you — and what it should roughly cost, estimated from this workspace's own measured history. No history, no number: an invented estimate is worse than none. |
-| **The team** | The six seats and their departments with live status dots; every specialist opens to what it owns, what it refuses and its measured reliability. Below: the seven gates in plain words, the ten principles, and a one-button constitutional health check. Recognition is derived from real outcomes, so it can be earned and never granted. |
-| **Spending** | Two labelled numbers: **measured** — provider-reported usage read from the session transcripts, cache reads listed apart — and **attributed** — what campaigns reported about themselves, by department, agent and campaign. The gap is named: work that never closed its ledger. |
-| **Sessions** | Your real Claude Code sessions, read from the transcripts — when each started, turns, tokens, and a live badge on the active one. Places the organization has worked sit below, switchable; `?ws=` is validated against the registry. |
+| **The floor** | The whole organization, drawn and alive: twelve rooms in a ring, the board's hex table (no head chair), you at reception, an elevator. Lamps carry live status, envelopes hang where mail waits, active runs type, streaks burn a small flame. Click anything — there is no menu, the office *is* the menu. |
+| **Any person** | Their profile (owns / refuses / measured reliability) and your conversation — **Ask** (enforced read-only) or **Do** (spawns Claude Code live in the workspace, streams into the thread, files the answer as a reply). Threads resume their Claude session. |
+| **Discovery Lab** | Drop ideas; queue GitHub repos for reverse-engineering; read the verdicts threaded under each. |
+| **Directorate** | The plan composer: who would work, in what order, where it pauses, what it should cost from this workspace's own history. |
+| **Core Treasury** | Spending, two labelled truths: measured from the transcripts (cache reads apart) and attributed from the ledger, by campaign. |
+| **Workforce Health** | Recognition — streaks, most improved, most dependable — derived from outcomes, impossible to grant. |
+| **Archives** | What the team has learned about this workspace, graded, plus every adaptation currently in force. |
+| **The board table** | The seven gates, the ten principles, and the one-button constitutional health check. |
+| **Your reception desk** | Approvals with one-click Approve, the quick ask, and what happened lately in plain words. |
+| **The elevator** | Real Claude Code sessions here (live badge, turns, tokens), and other places the organization has worked — switchable. |
 
 The mailbox is one append-only file with three lenses — a chat message, an idea and a repo
 intake are the same row with a different `kind`. Unanswered mail rides the session

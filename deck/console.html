@@ -8,30 +8,27 @@
 <link rel="stylesheet" href="/console.css">
 </head>
 <body>
-<div id="app">
-  <nav class="rail" aria-label="Console">
-    <div class="brand">
-      <span class="mark" aria-hidden="true"></span>
-      <span><b>F.O.R.G.E.</b><small id="ws-name">your organization</small></span>
-    </div>
-    <button class="nav" data-view="home"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z"/></svg>Home<span class="count" id="c-home"></span></button>
-    <button class="nav" data-view="chat"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4V5a1 1 0 0 1 1-1z"/></svg>Chat<span class="count" id="c-chat"></span></button>
-    <button class="nav" data-view="ideas"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a7 7 0 0 1 4 12.7V17a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1v-2.3A7 7 0 0 1 12 2zM9 21h6v1H9z"/></svg>Ideas</button>
-    <button class="nav" data-view="repos"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v16l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg>Repos to study</button>
-    <button class="nav" data-view="plans"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4 5h16v3H4zM4 10.5h10v3H4zM4 16h13v3H4z"/></svg>Plans</button>
-    <button class="nav" data-view="team"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9z"/></svg>The team</button>
-    <button class="nav" data-view="spend"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M14 2a9 9 0 0 1 8 8h-8z"/></svg>Spending</button>
-    <button class="nav" data-view="sessions"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3a9 9 0 1 1-9 9h2a7 7 0 1 0 7-7zM11 8h2v5l4 2-1 1.7-5-2.7z"/></svg>Sessions</button>
-  </nav>
-  <main class="stage"><div class="wrap" id="stage"><p class="empty">One moment…</p></div></main>
+<div id="app" class="officeapp">
+  <header class="hud">
+    <div class="brand"><span class="mark" aria-hidden="true"></span><span><b>F.O.R.G.E.</b><small id="ws-name">your organization</small></span></div>
+    <button class="hudpill" id="hud-needs" data-open="reception" title="Approvals and questions waiting on you">·</button>
+    <button class="hudpill" id="hud-mail" data-open="reception" title="Messages in flight">·</button>
+    <button class="hudpill" id="hud-live" data-open="sessions" title="Live Claude Code sessions">·</button>
+    <span class="spacer"></span>
+    <span class="hudstat" id="live">connecting…</span>
+  </header>
+
+  <main class="floorwrap">
+    <canvas id="office" role="img" aria-label="The office: twelve department rooms around the board table. Every room, the board, your reception desk and the elevator are clickable — the buttons below reach the same places by keyboard."></canvas>
+    <nav class="officelegend" aria-label="Walk the office by keyboard" id="legend"></nav>
+  </main>
+
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <button class="drawerclose" id="drawerclose" aria-label="Close panel">×</button>
+    <div id="drawerbody"></div>
+  </aside>
 </div>
 <script>
-  // A silent freeze is the worst failure a non-technical surface can have. Any uncaught
-  // error paints a plain-language banner instead of leaving a button saying "Planning…"
-  // forever — which is exactly how this trap earned its place.
-  // Both channels: a throw in a click handler arrives as 'error', but the same throw in
-  // an async chain arrives as 'unhandledrejection' — the first version listened to one and
-  // a crashed render passed in silence.
   window.addEventListener('unhandledrejection', (e) => {
     window.dispatchEvent(new ErrorEvent('error', { message: String(e.reason && e.reason.message || e.reason) }));
   });

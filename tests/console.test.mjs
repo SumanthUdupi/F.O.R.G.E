@@ -144,17 +144,27 @@ describe('rollups are derived, never stored', () => {
   });
 });
 
-describe('the console carries what the ops deck used to', () => {
-  test('plans, team depth, health check and error trap are all served', async () => {
+describe('the office carries the whole console — no sidebar, nothing lost', () => {
+  test('the shell is HUD + floor + drawer, and every rehomed feature is in the client', async () => {
     const html = (await get('/')).body;
-    assert.match(html, /data-view="plans"/, 'the plan composer has no way in');
-    // A crash in an async render arrives as unhandledrejection, not error. The first trap
-    // listened to one channel and a crashed Plans view froze in silence at "Planning…".
-    assert.match(html, /unhandledrejection/, 'async crashes would freeze the page silently again');
+    assert.ok(!/data-view=/.test(html), 'the sidebar navigation came back');
+    assert.match(html, /id="office"/, 'no floor');
+    assert.match(html, /id="drawer"/, 'no drawer');
+    assert.match(html, /unhandledrejection/, 'async crashes would freeze silently again');
     const js = (await get('/console.js')).body;
-    assert.match(js, /const divOf =/, 'divOf regression — the ops helper the console never had');
-    assert.match(js, /healthcheck/, 'the constitutional audit lost its button in the move');
-    assert.match(js, /refuses/, 'roster depth (what each agent refuses) did not survive the move');
+    for (const [needle, feature] of [
+      ['personDrawer', 'chat with a person'],
+      ['ideabody', 'ideas in the Lab'],
+      ['repourl', 'repo intake in the Lab'],
+      ['planreq', 'plans in the Directorate'],
+      ['healthcheck', 'the audit on the board table'],
+      ['data-approve', 'approvals at reception'],
+      ['CLAUDE CODE SESSIONS', 'sessions in the elevator'],
+      ['measured', 'spending in the Treasury'],
+      ['refuses', 'roster depth in the person drawer'],
+    ]) {
+      assert.ok(js.includes(needle), `feature lost in the move to the office: ${feature}`);
+    }
   });
 });
 

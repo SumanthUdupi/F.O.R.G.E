@@ -36,7 +36,7 @@ let scene = null;           // rooms, chars, board — rebuilt when the org chan
 let live = null;            // status, mail, runs, rewards — swapped on every refresh
 let couriers = [];          // one-shot walkers, spawned by run events
 let hover = null;
-let handlers = { onRoom: () => {}, onAgent: () => {} };
+let handlers = { onRoom: () => {}, onAgent: () => {}, onBoard: () => {}, onReception: () => {}, onElevator: () => {} };
 let reduced = false;
 
 // ── layout ─────────────────────────────────────────────────────────────────────────────
@@ -156,7 +156,7 @@ const envelope = (x, y, time) => {
 
 // ── the frame ─────────────────────────────────────────────────────────────────────────
 
-const draw = (now) => {
+const frame = (now) => {
   const time = now - t0;
   ctx.clearRect(0, 0, W, H);
 
@@ -240,6 +240,17 @@ const draw = (now) => {
   ctx.fillText('no head chair', scene.bx, scene.by + 15);
   for (const c of scene.board) person(c, time, { typing: runsByAgent.has(c.agent), dim: false });
 
+  // the elevator — sessions and other workplaces live behind these doors
+  const ev = { x: 340, y: 560 };
+  ctx.fillStyle = '#e8dcc4'; ctx.strokeStyle = PAL.wall; ctx.lineWidth = 2;
+  rr(ev.x - 26, ev.y - 34, 52, 68, 6); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = PAL.faint;
+  ctx.beginPath(); ctx.moveTo(ev.x, ev.y - 30); ctx.lineTo(ev.x, ev.y + 30); ctx.stroke();
+  ctx.fillStyle = PAL.faint; ctx.font = '600 9px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('ELEVATOR', ev.x, ev.y + 46);
+  ctx.fillText('sessions', ev.x, ev.y + 57);
+  scene.elevator = ev;
+
   // reception — the Principal's desk
   const rc = scene.reception;
   ctx.fillStyle = '#e8dcc4'; ctx.strokeStyle = PAL.wall;
@@ -268,6 +279,10 @@ const draw = (now) => {
     ctx.fillText(label, hover.x, hover.y - 28);
   }
 
+};
+
+const draw = (now) => {
+  frame(now);
   raf = requestAnimationFrame(draw);
 };
 
@@ -283,6 +298,9 @@ const pick = (mx, my) => {
   for (const c of scene.board) {
     if (Math.abs(mx - c.x) < 14 && my > c.y - 28 && my < c.y + 16) return { type: 'agent', agent: c.agent, x: c.x, y: c.y };
   }
+  if (scene.elevator && Math.abs(mx - scene.elevator.x) < 30 && Math.abs(my - scene.elevator.y) < 40) return { type: 'elevator' };
+  if (Math.abs(mx - scene.reception.x) < 62 && Math.abs(my - scene.reception.y) < 34) return { type: 'reception' };
+  if (Math.abs(mx - scene.bx) < 100 && Math.abs(my - scene.by) < 70) return { type: 'board' };
   for (const room of scene.rooms) {
     if (mx > room.x && mx < room.x + room.w && my > room.y && my < room.y + room.h) return { type: 'room', id: room.id };
   }
@@ -311,6 +329,9 @@ export const mount = (el, org, on) => {
   canvas.onclick = () => {
     if (hover?.type === 'room') handlers.onRoom(hover.id);
     if (hover?.type === 'agent') handlers.onAgent(hover.agent);
+    if (hover?.type === 'board') handlers.onBoard();
+    if (hover?.type === 'reception') handlers.onReception();
+    if (hover?.type === 'elevator') handlers.onElevator();
   };
 
   cancelAnimationFrame(raf);
@@ -331,3 +352,17 @@ export const courier = (agentName) => {
 };
 
 export const unmount = () => { cancelAnimationFrame(raf); raf = 0; canvas = null; };
+
+/**
+ * Stop animating but keep the scene: one last frame, then stillness. Used by ?live=0 —
+ * a headless capture under virtual time never reaches idle while a rAF loop runs, so the
+ * static mode that exists for screenshots must actually hold still.
+ */
+export const freeze = () => {
+  cancelAnimationFrame(raf);
+  raf = 0;
+  // One deliberate frame after the loop stops. Under a headless virtual-time capture the
+  // timer that calls freeze can win the race against the first animation frame, and a
+  // freeze that only cancels then holds a canvas nobody ever painted.
+  if (ctx && scene) frame(performance.now());
+};

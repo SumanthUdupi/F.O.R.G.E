@@ -1,0 +1,40 @@
+name: constitution
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  audit:
+    # Three platforms because path handling is where this kind of tool breaks silently:
+    # `new URL(import.meta.url).pathname` yields "/D:/a/repo" on Windows and every path
+    # built from it misses without erroring.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['18', '20', '22']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # No `npm install`. There are no dependencies, and a lockfile step here would hide
+      # the day one crept in.
+      - name: the organization loads and cross-references
+        run: node scripts/forge.mjs roster > /dev/null
+
+      - name: constitutional audit
+        run: node scripts/forge.mjs doctor
+
+      - name: the build is in sync with the registry
+        run: node scripts/forge.mjs build --apply && git diff --exit-code
+
+      - name: the charter is in sync with the constitution
+        run: node scripts/forge.mjs charter --apply && git diff --exit-code
+
+      - name: tests
+        run: node --test tests/

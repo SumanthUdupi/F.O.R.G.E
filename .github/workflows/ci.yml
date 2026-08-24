@@ -16,6 +16,12 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         node: ['18', '20', '22']
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # bash on every platform, including the Windows runners. The default there is
+        # PowerShell, which has no /dev/null and does not expand globs -- both of which
+        # this job needs, and both of which failed the first time this ran.
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,5 +42,8 @@ jobs:
       - name: the charter is in sync with the constitution
         run: node scripts/forge.mjs charter --apply && git diff --exit-code
 
+      # An explicit glob, not `--test tests/`. Node 22 treats a bare directory argument as a
+      # module to execute and fails with "Cannot find module .../tests"; 18 and 20 accept it.
+      # The glob is the form all three agree on.
       - name: tests
-        run: node --test tests/
+        run: node --test tests/*.test.mjs

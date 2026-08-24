@@ -1,0 +1,7 @@
+# Check everything out with LF on every platform.
+#
+# Without this, a Windows runner checks out CRLF, the generated agents/*.md are written with
+# LF by the build, and `git diff --exit-code` reports the whole tree as modified -- a
+# build-sync check that fails for its own reasons, which is indistinguishable from one that
+# found a stale build.
+* text=auto eol=lf

@@ -96,7 +96,14 @@ const step = async (name, fn) => {
     await until(() => document.body.textContent.includes('attributed'));
   });
 
-  await step('the elevator lists Claude Code sessions, honestly empty here', async () => {
+  await step('the elevator opens mission control with org-wide sessions', async () => {
+    click('[data-open="mission"]');
+    await until(() => document.body.textContent.includes('Mission control'));
+    await until(() => document.body.textContent.includes('WHO IS INVOLVED'));
+    await until(() => document.body.textContent.includes('ORG FEED'));
+  });
+
+  await step('the local elevator view still exists for this workspace', async () => {
     click('[data-open="sessions"]');
     await until(() => document.body.textContent.includes('CLAUDE CODE SESSIONS'));
   });

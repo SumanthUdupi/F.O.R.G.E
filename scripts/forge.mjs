@@ -217,6 +217,21 @@ switch (cmd) {
     console.log(`  workspace     ${process.cwd()}`);
     console.log('  bound to loopback only — the deck reads your ledger and profile, and has no auth because it has no remote.');
     console.log('  ctrl-c to stop\n');
+    if (flag('vscode')) {
+      // Drop the task file into the CURRENT project so ⌘⇧B works there, then tell the
+      // Principal the two keystrokes. Never overwrites an existing tasks.json — a project's
+      // own build tasks are not ours to replace.
+      const dst = path.join(process.cwd(), '.vscode', 'tasks.json');
+      if (fs.existsSync(dst)) {
+        console.log(`  ${path.relative(process.cwd(), dst)} already exists — left alone. Add the task from ${path.join(ROOT, 'vscode', '.vscode', 'tasks.json')}`);
+      } else {
+        fs.mkdirSync(path.dirname(dst), { recursive: true });
+        fs.copyFileSync(path.join(ROOT, 'vscode', '.vscode', 'tasks.json'), dst);
+        console.log(`  wrote ${path.relative(process.cwd(), dst)} — press ⌘⇧B in VS Code to start the Console here`);
+      }
+      console.log('  then: ⌘⇧P → "Simple Browser: Show" → http://127.0.0.1:7717');
+      console.log('  drag the tab beside your code and leave it there.\n');
+    }
     if (!flag('no-open')) {
       // Best effort. A failure to launch a browser is not a failure to serve the deck, so
       // it stays silent and the URL above is the fallback.

@@ -14,11 +14,11 @@ Six board seats · twelve departments · 49 specialists · zero dependencies
 git clone https://github.com/SumanthUdupi/F.O.R.G.E && cd F.O.R.G.E
 node scripts/forge.mjs doctor                     # the constitutional audit
 node scripts/forge.mjs install --apply --hooks    # 64 agents + /forge + the hooks
-node scripts/forge.mjs deck                       # open the office
+node scripts/forge.mjs deck --vscode              # open the office (in a VS Code tab)
 ```
 
-[The charter](./CHARTER.md) · [What it refused to become](./docs/STUDIES.md) · [The hooks](./docs/HOOKS.md) · [How it learns](./docs/EVOLUTION.md) · [Extending it](./docs/EXTENDING.md)
+[In VS Code](./vscode/README.md) · [The charter](./CHARTER.md) · [What it refused to become](./docs/STUDIES.md) · [The hooks](./docs/HOOKS.md) · [How it learns](./docs/EVOLUTION.md) · [Extending it](./docs/EXTENDING.md)
 
-MIT · 163 tests · CI on 3 OS × 3 Node · governed by its own board
+MIT · 167 tests · CI on 3 OS × 3 Node · governed by its own board
 
 </div>

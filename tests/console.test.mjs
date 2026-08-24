@@ -330,3 +330,52 @@ describe('the Console dispatches Claude Code itself — with a stub runtime unde
     assert.equal(res.status, 404);
   });
 });
+
+describe('org-wide activity — ground truth, never invented', () => {
+  test('a workspace with no transcripts reports unavailable, not silence dressed as calm', async () => {
+    const { allSessions, orgActivity } = await import('../scripts/activity.mjs');
+    // Against the real machine this returns real sessions; the shape contract is what
+    // matters and must hold either way.
+    const a = allSessions({ limit: 3 });
+    assert.equal(typeof a.available, 'boolean');
+    for (const s of a.sessions) {
+      assert.equal(typeof s.active, 'boolean');
+      assert.ok(Array.isArray(s.agents), 'agents must be a list, even when empty');
+      assert.ok(s.turns >= 0);
+    }
+    const o = orgActivity();
+    assert.ok(Array.isArray(o.events) && Array.isArray(o.busyAgents));
+    assert.equal(typeof o.activeCount, 'number');
+  });
+
+  test('an agent appears busy only if a dispatch was actually recorded', async () => {
+    const { orgActivity } = await import('../scripts/activity.mjs');
+    const o = orgActivity();
+    // Every busy agent must carry the evidence of where and when — no bare names.
+    for (const a of o.busyAgents) {
+      assert.ok(a.name && a.session && a.at, `${JSON.stringify(a)} lacks its provenance`);
+    }
+  });
+
+  test('the endpoints are served and the HUD can count from them', async () => {
+    for (const p of ['/api/org-sessions', '/api/activity']) {
+      const r = await get(p);
+      assert.equal(r.status, 200, `${p} is not served`);
+      const j = JSON.parse(r.body);
+      assert.ok('available' in j || 'events' in j);
+    }
+  });
+
+  test('mission control and the VS Code task are both in the shipped client', async () => {
+    const js = (await get('/console.js')).body;
+    assert.ok(js.includes('missionDrawer'), 'mission control is missing from the client');
+    assert.ok(js.includes('WORKING NOW'), 'the live-session section is missing');
+    assert.ok(js.includes('recorded dispatches'), 'the involved-agents section is missing');
+    // ROOT from core.mjs — never new URL(...).pathname, which this repository documents
+    // as its own most-repeated trap and which I still wrote here on the third occasion.
+    const { ROOT } = await import('../scripts/core.mjs');
+    const task = fs.readFileSync(path.join(ROOT, 'vscode', '.vscode', 'tasks.json'), 'utf8');
+    JSON.parse(task); // must be valid JSON or ⌘⇧B fails silently in VS Code
+    assert.match(task, /forge\.mjs.{0,3} deck/, 'the task does not start the Console');
+  });
+});

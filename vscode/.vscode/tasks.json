@@ -1,0 +1,25 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "F.O.R.G.E.: Console server",
+      "type": "shell",
+      "command": "node \"${env:FORGE_HOME}/scripts/forge.mjs\" deck --port 7717 --no-open",
+      "isBackground": true,
+      "runOptions": { "runOn": "folderOpen" },
+      "presentation": { "reveal": "never", "panel": "dedicated", "close": false },
+      "problemMatcher": {
+        "pattern": [{ "regexp": "^(COMMAND DECK|refusing)(.*)$", "message": 2 }],
+        "background": { "activeOnStart": true, "beginsPattern": ".*", "endsPattern": "COMMAND DECK" }
+      }
+    },
+    {
+      "label": "F.O.R.G.E.: open the office",
+      "dependsOn": "F.O.R.G.E.: Console server",
+      "type": "shell",
+      "command": "echo 'Console at http://127.0.0.1:7717 — now run: Simple Browser: Show'",
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "shared", "clear": true }
+    }
+  ]
+}

@@ -29,7 +29,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 
 const state = {
   org: null, live: null, mail: null, tokens: null, rewards: null, wsinfo: null, sessions: null, runsActive: [],
-  ws: null, drawer: null, recipient: 'chair', draft: {}, mode: 'ask', run: null,
+  ws: null, drawer: null, recipient: 'chair', draft: {}, mode: 'ask', run: null, orgSessions: null, activity: null,
 };
 
 const api = async (path, body) => {
@@ -225,7 +225,51 @@ const sessionsDrawer = () => {
     }).join('')}`;
 };
 
-const DRAWERS = { person: (id) => personDrawer(id), room: (id) => roomDrawer(id), board: boardDrawer, reception: receptionDrawer, sessions: sessionsDrawer };
+
+/**
+ * Mission Control — the drawer the Principal was missing.
+ *
+ * Every session on this machine, what each is doing right now, and which agents the
+ * transcripts show involved. Nothing here is inferred: a session with no recent line
+ * says idle, and an agent appears only because a dispatch was actually recorded.
+ */
+const missionDrawer = () => {
+  const os_ = state.orgSessions || { available: false, sessions: [] };
+  const act = state.activity || { events: [], busyAgents: [], activeCount: 0 };
+  const fmtTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n));
+  const wsName = (p) => (p ? p.split('/').filter(Boolean).pop() : 'unknown');
+
+  const live = os_.sessions.filter((x) => x.active);
+  const idle = os_.sessions.filter((x) => !x.active).slice(0, 8);
+
+  const card = (x) => `<div class="minithread ${x.active ? 'needsyou' : ''}">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="chip ${x.active ? 'good' : 'plain'}">${x.active ? 'LIVE' : ago(x.lastAt)}</span>
+        <b>${esc(wsName(x.cwd))}</b>
+        ${x.branch && x.branch !== 'HEAD' ? `<span class="chip plain">${esc(x.branch)}</span>` : ''}
+        <span class="hint" style="margin:0">${x.turns.toLocaleString()} turns · ${fmtTok(x.tokens)} tokens</span>
+      </div>
+      ${x.slug ? `<div style="font-size:12.5px;color:var(--ink-2);margin-top:4px">“${esc(x.slug.replace(/-/g, ' '))}”</div>` : ''}
+      ${x.doing ? `<div style="font-size:13px;margin-top:5px">${x.active ? '<b>now:</b>' : 'last:'} ${esc(x.doing)}</div>` : ''}
+      ${x.agents.length ? `<div style="margin-top:6px">${x.agents.slice(0, 6).map((a) => `<button class="personbtn" data-person="${esc(a.name)}" style="margin:2px 4px 0 0">${avatar(a.name)}<span>${esc(a.name)}<small>${ago(a.at)}</small></span></button>`).join('')}</div>`
+        : '<div class="hint" style="margin-top:5px">no specialist dispatches recorded in this session</div>'}
+    </div>`;
+
+  return `
+    <div class="dhead"><h2>Mission control</h2><p>${act.activeCount ? `${act.activeCount} session${act.activeCount === 1 ? '' : 's'} working right now` : 'Nothing running right now.'} · ${os_.total || 0} on this machine</p></div>
+    ${live.length ? `<h3 class="dsec">WORKING NOW</h3>${live.map(card).join('')}` : '<p class="empty">No session has produced a line in the last three minutes. Start one with <b>claude</b> in any workspace, or send a <b>Do</b> message to anyone in the office.</p>'}
+    <h3 class="dsec">WHO IS INVOLVED — recorded dispatches</h3>
+    ${act.busyAgents.length
+      ? `<div class="peoplerow">${act.busyAgents.slice(0, 12).map((a) => `<button class="personbtn" data-person="${esc(a.name)}">${avatar(a.name)}<span>${esc(a.name)}<small>${esc(a.workspace)} · ${ago(a.at)}</small></span></button>`).join('')}</div>`
+      : '<p class="empty">No specialist dispatches in the recent window. The organization only claims involvement the transcripts actually record.</p>'}
+    <h3 class="dsec">ORG FEED — what is happening across every session</h3>
+    ${act.events.length
+      ? act.events.slice(0, 16).map((e) => `<div class="feedline"><span class="ft">${ago(e.at)}</span><span class="fw">${esc(e.workspace)}</span><span>${esc(e.text)}</span></div>`).join('')
+      : '<p class="empty">Quiet everywhere.</p>'}
+    ${idle.length ? `<h3 class="dsec">RECENT, NOT ACTIVE</h3>${idle.map(card).join('')}` : ''}`;
+};
+
+const DRAWERS = { mission: missionDrawer, person: (id) => personDrawer(id), room: (id) => roomDrawer(id), board: boardDrawer, reception: receptionDrawer, sessions: sessionsDrawer };
 
 // ── render: HUD + drawer only. The floor is mounted once and left alone. ─────────────
 
@@ -243,11 +287,12 @@ const render = () => {
   $('#ws-name').textContent = state.live.workspace;
   const needs = pendingProposals().length;
   const waiting = ((state.mail && state.mail.threads) || []).filter((t) => !t.answered).length;
-  const liveN = (state.sessions?.sessions || []).filter((x) => x.active).length;
+  const liveN = state.activity?.activeCount ?? (state.sessions?.sessions || []).filter((x) => x.active).length;
   $('#hud-needs').textContent = needs ? `${needs} need${needs === 1 ? 's' : ''} you` : 'nothing needs you';
   $('#hud-needs').classList.toggle('hot', needs > 0);
   $('#hud-mail').textContent = `${waiting} in flight`;
-  $('#hud-live').textContent = `${liveN} live`;
+  $('#hud-live').textContent = liveN === 1 ? '1 session live' : `${liveN} sessions live`;
+  $('#hud-live').classList.toggle('hot', liveN > 0);
 
   const drawer = $('#drawer');
   if (state.drawer) {
@@ -276,7 +321,9 @@ const openDrawer = (type, id = null) => {
 const officeData = () => ({
   status: state.live?.status || {},
   waitingThreads: ((state.mail && state.mail.threads) || []).filter((t) => !t.answered),
-  runs: state.runsActive || [],
+  // A run the Console started AND any agent the transcripts show working — the office
+  // animates the organization's real activity, not only the part it kicked off itself.
+  runs: [...(state.runsActive || []), ...((state.activity?.busyAgents) || []).map((a) => ({ to: a.name }))],
   rewards: state.rewards || {},
 });
 
@@ -285,6 +332,11 @@ const refresh = async ({ passive = false } = {}) => {
     api('/api/state'), api('/api/messages'), api('/api/tokens'), api('/api/rewards'), api('/api/workspaces'), api('/api/sessions'),
     api('/api/runs').then((r) => r.active),
   ]);
+  // Org-wide activity is a separate, cheap poll: it must never be able to break the
+  // Console if a transcript directory is unreadable.
+  try {
+    [state.orgSessions, state.activity] = await Promise.all([api('/api/org-sessions'), api('/api/activity')]);
+  } catch { state.activity = state.activity || { events: [], busyAgents: [], activeCount: 0 }; }
   Office.update(officeData());
   if (passive && typingNow()) return;
   render();
@@ -295,7 +347,8 @@ const buildLegend = () => {
     `<button class="legendchip" data-open="reception"><span class="dot active"></span>Your desk</button>`,
     `<button class="legendchip" data-open="board"><span class="dot active"></span>The Board</button>`,
     ...state.org.divisions.map((d) => `<button class="legendchip" data-room="${d.id}"><span class="dot ${esc(state.live.status[d.id]?.state || 'idle')}"></span>${esc(d.name)}</button>`),
-    `<button class="legendchip" data-open="sessions"><span class="dot idle"></span>Elevator · sessions</button>`,
+    `<button class="legendchip" data-open="mission"><span class="dot active"></span>Mission control</button>`,
+    `<button class="legendchip" data-open="sessions"><span class="dot idle"></span>Elevator · this workspace</button>`,
   ].join('');
 };
 
@@ -404,7 +457,7 @@ const LIVE = new URLSearchParams(location.search).get('live') !== '0';
 
   // Old deep links keep working: every retired view has a home in the office.
   const view = p.get('view');
-  const map = { chat: () => openDrawer('person', p.get('recipient') || 'chair'), ideas: () => openDrawer('room', 'DIV-DSC'), repos: () => openDrawer('room', 'DIV-DSC'), plans: () => openDrawer('room', 'DIV-DIR'), team: () => openDrawer('board'), spend: () => openDrawer('room', 'DIV-TRS'), sessions: () => openDrawer('sessions'), home: () => {} };
+  const map = { chat: () => openDrawer('person', p.get('recipient') || 'chair'), ideas: () => openDrawer('room', 'DIV-DSC'), repos: () => openDrawer('room', 'DIV-DSC'), plans: () => openDrawer('room', 'DIV-DIR'), team: () => openDrawer('board'), spend: () => openDrawer('room', 'DIV-TRS'), sessions: () => openDrawer('mission'), home: () => {} };
   if (map[view]) map[view]();
   if (p.get('request') && view === 'plans') {
     state.planning = true; render();

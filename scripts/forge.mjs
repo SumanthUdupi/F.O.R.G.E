@@ -31,6 +31,7 @@ const currentMemory = () => derive(readLedger()).memory;
 import { profileWorkspace, renderProfile, propose, applyProposal, loadOverlay, CAP } from './learn.mjs';
 import { install } from './install.mjs';
 import { charterDoc } from './charter-doc.mjs';
+import { startDeck } from './deck.mjs';
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -60,6 +61,9 @@ F.O.R.G.E. — Foundry for Organized Reasoning, Governance and Evolution
   forge build [--apply]         regenerate agents/ and the skill from the registry
   forge install [--apply]       install into ~/.claude (agents + skill)
   forge charter [--apply]       regenerate CHARTER.md from the constitution
+
+  forge deck [--port 7717]      open the Command Deck in a browser. Loopback only,
+                                zero dependencies, reads this workspace's .forge/
 
   forge observe --agent <n> --capability <c> --outcome ok|partial|fail|blocked
       [--correction "..."] [--tokens N] [--campaign id]
@@ -174,6 +178,36 @@ switch (cmd) {
     } else {
       console.log(body);
     }
+    break;
+  }
+
+  case 'deck': {
+    const port = Number(flag('port', 7717));
+    let deck;
+    try {
+      deck = await startDeck({ port, cwd: process.cwd() });
+    } catch (e) {
+      die(e.code === 'EADDRINUSE' ? `port ${port} is busy. Try: forge deck --port ${port + 1}` : e.message);
+    }
+    const url = `http://127.0.0.1:${deck.port}`;
+    console.log(`\n  COMMAND DECK  ${url}`);
+    console.log(`  workspace     ${process.cwd()}`);
+    console.log('  bound to loopback only — the deck reads your ledger and profile, and has no auth because it has no remote.');
+    console.log('  ctrl-c to stop\n');
+    if (!flag('no-open')) {
+      // Best effort. A failure to launch a browser is not a failure to serve the deck, so
+      // it stays silent and the URL above is the fallback.
+      const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+      import('node:child_process').then(({ spawn }) => {
+        try {
+          spawn(opener, [url], { stdio: 'ignore', detached: true, shell: process.platform === 'win32' }).unref();
+        } catch { /* the URL is printed above */ }
+      });
+    }
+    process.on('SIGINT', () => {
+      deck.close();
+      process.exit(0);
+    });
     break;
   }
 

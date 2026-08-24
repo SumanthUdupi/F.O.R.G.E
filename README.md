@@ -113,6 +113,38 @@ RUNNERS-UP  who else could have taken each stage
 **Deterministic and model-free.** Same request, same plan, every time. A wrong route is a
 diff against `registry/routing.yaml`, not an argument with a model.
 
+## The Command Deck
+
+```bash
+forge deck        # http://127.0.0.1:7717
+```
+
+A live operations view of the organization: the division map, the Vector you are about to
+run, who is measurably good at what, and the proposals waiting on you. Zero dependencies —
+Node's own `http` module and three hand-written files, so it works on a fresh clone with no
+install step and no network.
+
+**Loopback only.** It reads your ledger and workspace profile and has no authentication,
+because it has no remote.
+
+| View | What it answers |
+|---|---|
+| **Command Deck** | Twelve hexagonal divisions grouped by the seat that owns them. Colour is state — cyan active, amber blocked, magma failing, steel idle. A triangle marks a division that may halt a campaign. |
+| **Campaign Vector** | Compose a plan and watch it resolve into a chevron chain, batch by batch, with every gate as an unmissable card. |
+| **The Board** | Six seats, each with its portfolio, its stance, what it **refuses**, and what it **objects to**. |
+| **Roster** | All 64 agents, filterable by capability or responsibility, each showing its resolved output contract. |
+| **Learning** | Proposals with their evidence grade and an Approve button. Measured reliability per agent. Corrections. What is currently in force here. |
+| **Charter · Audit** | The twelve rules with the check that enforces each, and the live constitutional audit. |
+
+Every view deep-links: `?view=learning`, `?view=vector&request=...`, `?live=0` to freeze it
+for a screenshot.
+
+### It is not a second way to start work
+
+The deck shows what the organization knows and lets you approve a proposal. It does not
+dispatch agents — that belongs to the host runtime, and a second thing that can start work
+is a second thing that can start work nobody asked for.
+
 ## It learns your workspace
 
 The organization ships with **no domain**. There is no framework, vendor or product named
@@ -184,7 +216,7 @@ manager anyway is exactly the drift it exists to catch.
 
 ```bash
 node scripts/forge.mjs doctor    # 12 constitutional rules + 6 hygiene checks
-node --test tests/               # 115 tests
+node --test tests/*.test.mjs     # 133 tests
 ```
 
 ```
@@ -221,8 +253,9 @@ registry/roster.yaml        64 agents — each with what it owns and what it ref
 registry/routing.yaml       28 rules, 4 effort modes, the scoring weights
 registry/contracts.yaml     output contracts, composed once, inherited by all 64
 agents/*.md                 BUILD OUTPUT. edit the registry, run `forge build --apply`
-scripts/                    yaml · core · router · vector · ledger · learn · doctor · render
-tests/                      115 tests, node:test, zero dependencies
+scripts/                    yaml · core · router · vector · ledger · learn · doctor · render · deck
+deck/                       the Command Deck — one page, one stylesheet, one client
+tests/                      133 tests, node:test, zero dependencies
 ```
 
 ## Commands
@@ -239,6 +272,7 @@ tests/                      115 tests, node:test, zero dependencies
 | `forge evolve --apply <id>` | approve one. the only way anything changes |
 | `forge build --apply` | regenerate `agents/` from the registry |
 | `forge install --apply` | install into `~/.claude` |
+| `forge deck` | the Command Deck, on loopback |
 
 ## Lineage
 

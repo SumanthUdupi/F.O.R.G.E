@@ -14,8 +14,17 @@
 
 import { detectMode, matchRules, matchGates, selectAgents } from './router.mjs';
 
-/** Stages these rules produce survive every cap. See the trim below for why. */
-const MANDATORY_RULES = new Set(['R-INTENT', 'R-REPORT']);
+/**
+ * Stages these rules produce survive every cap, each with its own reason.
+ *
+ * One shared message was wrong for both: it told the framing stage that "the Principal must
+ * be told what happened", which is the brief's job, not the frame's. A mandatory stage has
+ * to say why IT is mandatory or the reader learns to skip the line.
+ */
+const MANDATORY_RULES = new Map([
+  ['R-INTENT', 'without a done-condition nothing downstream can be checked'],
+  ['R-REPORT', 'a campaign that reports nothing to the Principal has not delivered'],
+]);
 
 const MODE_FLOOR = ['direct', 'focused', 'standard', 'campaign'];
 
@@ -128,7 +137,7 @@ export const composeVector = (request, org, { memory = {}, mode: modeOverride = 
         score: pick.score,
         dependsOn: prior,
         gate: null,
-        mandatory: MANDATORY_RULES.has(ruleId) ? 'the Principal must be told what happened' : null,
+        mandatory: MANDATORY_RULES.get(ruleId) || null,
       });
     }
     stages = stages.concat(inPhase);

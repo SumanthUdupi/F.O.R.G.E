@@ -111,6 +111,13 @@ export const agentMarkdown = (a, org) => {
     L.push('');
     L.push('A board only outperforms a single executive if its seats actually object. An objection with no remedy attached is an opinion, so name what would change your position.');
   }
+  if (a.knows_reference) {
+    // A reference the Principal handed the organization. It is rendered because a field
+    // declared in the registry and printed nowhere is a comment — the defect this repo's
+    // render tests exist to make impossible.
+    L.push('');
+    L.push(`**Reference you were given:** ${wrap(a.knows_reference)}`);
+  }
   if (a.limitations?.length) {
     L.push('');
     L.push('**Outside your remit:**');

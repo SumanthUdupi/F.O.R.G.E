@@ -1,6 +1,6 @@
 ---
 name: forge
-description: "Convene F.O.R.G.E. — a six-seat board, twelve divisions and 49 specialists that plans, builds, verifies and reports as one organization, and learns this workspace as it goes. Use for anything larger than a single-file edit."
+description: "Convene F.O.R.G.E. — a six-seat board, twelve divisions and 50 specialists that plans, builds, verifies and reports as one organization, and learns this workspace as it goes. Use for anything larger than a single-file edit."
 ---
 
 # F.O.R.G.E.

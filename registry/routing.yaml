@@ -205,6 +205,11 @@ rules:
     capabilities: [regression]
     phase: verify
     why: A new pass never offsets a new failure; the pass-to-fail set is its own question.
+  - id: R-PLAYWRIGHT
+    when_any: [playwright, e2e, end to end test, browser test, automated ui test, selector, headless]
+    capabilities: [playwright]
+    phase: verify
+    why: A browser suite is the only evidence that the thing a person clicks actually works.
   - id: R-BROWSER
     when_any: [browser, click, journey, walkthrough, manual test, end user]
     capabilities: [browser]

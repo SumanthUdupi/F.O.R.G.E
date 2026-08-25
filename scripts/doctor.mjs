@@ -12,6 +12,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { ROOT, paths, ui, resolveContract } from './core.mjs';
 
@@ -340,6 +341,25 @@ export const HYGIENE = {
     ];
     if (!notes.length) notes.push({ level: 'pass', text: `${onDisk.length} generated agents match the roster exactly` });
     return { ok: !notes.some((n) => n.level === 'fail'), notes };
+  },
+
+  installed_agents_have_no_ghosts(org) {
+    // doctor audited the repo's agents/ and never the INSTALLED set — so an agent added
+    // to ~/.claude/agents by anything other than `forge install` was fully dispatchable
+    // while the registry knew nothing about it. That is the ghost problem the repo check
+    // already names, one directory over, and it was found by noticing an agent in the
+    // session listing that the roster had never heard of.
+    const dir = path.join(os.homedir(), '.claude', 'agents');
+    if (!fs.existsSync(dir)) return { ok: true, notes: [{ level: 'pass', text: 'nothing installed yet' }] };
+    const onDisk = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, ''));
+    const known = new Set(org.all.map((a) => a.name));
+    const ghosts = onDisk.filter((n) => !known.has(n));
+    const notes = ghosts.map((n) => ({
+      level: 'warn',
+      text: `${n} is installed and dispatchable but is not on the roster — it answers, and nobody can say who it is. Add it to registry/roster.yaml or remove ~/.claude/agents/${n}.md`,
+    }));
+    if (!notes.length) notes.push({ level: 'pass', text: `${onDisk.length} installed agents, all accounted for on the roster` });
+    return { ok: true, notes }; // a warning, not a failure: the Principal may install agents deliberately
   },
 
   every_capability_is_reachable(org) {

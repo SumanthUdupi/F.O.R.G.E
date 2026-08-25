@@ -6,7 +6,7 @@
 
 **Give Claude Code an entire company — and run it from a living office.**
 
-Six board seats · twelve departments · 49 specialists · zero dependencies
+Six board seats · twelve departments · 50 specialists · zero dependencies
 
 ### ⤷ [**The full story, told visually → readme.html**](https://sumanthudupi.github.io/F.O.R.G.E/readme.html)
 
@@ -19,6 +19,6 @@ node scripts/forge.mjs deck --vscode              # open the office (in a VS Cod
 
 [In VS Code](./vscode/README.md) · [The charter](./CHARTER.md) · [What it refused to become](./docs/STUDIES.md) · [The hooks](./docs/HOOKS.md) · [How it learns](./docs/EVOLUTION.md) · [Extending it](./docs/EXTENDING.md)
 
-MIT · 179 tests · CI on 3 OS × 3 Node · governed by its own board
+MIT · 181 tests · CI on 3 OS × 3 Node · governed by its own board
 
 </div>

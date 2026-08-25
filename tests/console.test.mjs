@@ -541,3 +541,30 @@ describe('per-agent tuning — the Principal may change behaviour, never shape',
     assert.ok(js.includes('registry/roster.yaml'), 'the client does not say where shape lives');
   });
 });
+
+describe('a reference the Principal supplies reaches the agent', () => {
+  test('knows_reference is rendered, not merely stored', async () => {
+    // The declared-vs-conveyed rule, applied to a new field: the Principal handed the
+    // organization a reference URL, and an agent that never sees it was not given it.
+    const { load } = await import('../scripts/core.mjs');
+    const { agentMarkdown } = await import('../scripts/render.mjs');
+    const org = load();
+    for (const a of org.all) {
+      if (!a.knows_reference) continue;
+      const body = agentMarkdown(a, org);
+      assert.ok(body.includes('Reference you were given'), `${a.name}: the reference is declared and not rendered`);
+      assert.ok(body.replace(/\s+/g, ' ').includes(a.knows_reference.replace(/\s+/g, ' ')), `${a.name}: the reference text was truncated`);
+    }
+  });
+
+  test('the playwright expert is grounded in the plugin, and refuses the flaky habits', async () => {
+    const { load } = await import('../scripts/core.mjs');
+    const org = load();
+    const p = org.byName.get('playwright-engineer');
+    assert.ok(p, 'QA has no playwright expert');
+    assert.equal(p.division, 'DIV-QAA');
+    assert.ok((p.capabilities || []).includes('playwright'));
+    assert.match(p.knows_reference, /claude\.com\/plugins\/playwright/, 'the expert is not pointed at the reference');
+    assert.match(p.refuses, /sleep|selector/i, 'the expert refuses none of the habits that make suites flaky');
+  });
+});

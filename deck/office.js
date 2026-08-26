@@ -16,13 +16,79 @@
  * buttons, so keyboard and screen-reader users get the same navigation the mouse gets.
  */
 
-const PAL = {
-  floor: '#efe7d6', court: '#f5efe3', wall: '#d9cbb0', room: '#fbf6ec', roomHot: '#fdf9f1',
-  ink: '#2b2117', ink2: '#6d5f4e', faint: '#a08f78',
-  copper: '#b05f2a', copperD: '#8a4a20', mark: '#0d8ea3',
-  good: '#3d7a5c', warn: '#a8741c', bad: '#b23b3b', paper: '#fffdf8',
-  skin: ['#b05f2a', '#0d8ea3', '#3d7a5c', '#a8741c', '#7d5a7a', '#6b7c8f'],
+/**
+ * THE CANVAS HAS TO BE TOLD ABOUT THE THEME — CSS cannot reach inside it.
+ *
+ * This was a hardcoded light palette, and when dark mode arrived the HUD and the drawer went
+ * dark while the office floor stayed bright paper. It was found by screenshotting the real
+ * page, and it is invisible to any assertion about classes or computed styles: a canvas has
+ * no elements to compute styles for. It is one bitmap that knows only what it is handed.
+ *
+ * So the palette is READ from the same custom properties everything else uses — one source
+ * of truth for colour, and a third theme later would be a token edit and nothing here.
+ *
+ * `floor` and the wood tones have no token of their own (they are canvas-only surfaces), so
+ * they are derived from --paper and --line by a small luminance shift. That keeps the office
+ * reading as a room in either ground without a second palette to maintain.
+ */
+const readVar = (name, fallback) => {
+  try {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  } catch {
+    return fallback; // rendered before styles resolve, or a context with no document
+  }
 };
+
+/** Nudge a #rrggbb toward white or black. Signed: positive is lighter. */
+const shift = (hex, amount) => {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex).trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => Math.max(0, Math.min(255, Math.round(c + amount))));
+  return `#${ch.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+};
+
+let PAL = {};
+
+const readPalette = () => {
+  const paper = readVar('--paper', '#f5efe3');
+  // Is the ground dark? Ask the ground, not the toggle — with no explicit choice the root
+  // carries no data-theme and the OS decides, so the attribute would be empty exactly when
+  // the answer matters.
+  const isDark = parseInt(String(paper).replace('#', '').slice(0, 2), 16) < 128;
+  PAL = {
+    court: paper,
+    floor: shift(paper, isDark ? 8 : -6),
+    wall: readVar('--line-2', '#d9cbb0'),
+    room: readVar('--card-2', '#fbf6ec'),
+    roomHot: shift(readVar('--card-2', '#fbf6ec'), isDark ? 12 : 4),
+    wood: shift(readVar('--line', '#e6dbc6'), isDark ? 4 : -8),
+    dim: shift(readVar('--faint', '#a08f78'), isDark ? -30 : 30),
+    ink: readVar('--ink', '#2b2117'),
+    ink2: readVar('--ink-2', '#6d5f4e'),
+    faint: readVar('--faint', '#a08f78'),
+    copper: readVar('--copper', '#b05f2a'),
+    copperD: readVar('--copper-ink', '#8a4a20'),
+    mark: readVar('--mark', '#0d8ea3'),
+    good: readVar('--good', '#3d7a5c'),
+    warn: readVar('--warn', '#a8741c'),
+    bad: readVar('--bad', '#b23b3b'),
+    paper: readVar('--card', '#fffdf8'),
+    // The people keep their hues in both themes. They are identity, not chrome — an agent
+    // that changed colour with the theme would read as a different agent.
+    skin: ['#b05f2a', '#0d8ea3', '#3d7a5c', '#a8741c', '#7d5a7a', '#6b7c8f'],
+  };
+};
+readPalette();
+
+/* The theme changes at runtime (the toggle) and under us (the OS). Both must repaint. */
+if (typeof document !== 'undefined') {
+  try {
+    new MutationObserver(readPalette).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readPalette);
+  } catch { /* no observers here — the palette it booted with still applies */ }
+}
 const hueFor = (name) => PAL.skin[[...name].reduce((n, c) => n + c.charCodeAt(0), 0) % PAL.skin.length];
 
 const W = 1240;
@@ -116,7 +182,7 @@ const person = (c, time, opts = {}) => {
     ctx[i ? 'lineTo' : 'moveTo'](c.x + Math.cos(a) * 8, hy + Math.sin(a) * 8.6);
   }
   ctx.closePath();
-  ctx.fillStyle = opts.dim ? '#c9bda6' : PAL.paper;
+  ctx.fillStyle = opts.dim ? PAL.dim : PAL.paper;
   ctx.fill();
   ctx.strokeStyle = hue;
   ctx.lineWidth = 1.6;
@@ -126,7 +192,7 @@ const person = (c, time, opts = {}) => {
     ctx.beginPath(); ctx.arc(c.x, hy, 2.6, 0, 7); ctx.fill();
   }
   // desk with papers
-  ctx.fillStyle = '#e4d6bc';
+  ctx.fillStyle = PAL.wood;
   rr(c.x - 15, c.y + 12, 30, 9, 2.5); ctx.fill();
   if (opts.typing) {
     ctx.fillStyle = PAL.paper;
@@ -228,7 +294,7 @@ const frame = (now) => {
   }
 
   // the board table — hexagonal, no head chair
-  ctx.fillStyle = '#e8dcc4'; ctx.strokeStyle = PAL.wall; ctx.lineWidth = 2;
+  ctx.fillStyle = PAL.wood; ctx.strokeStyle = PAL.wall; ctx.lineWidth = 2;
   ctx.beginPath();
   for (let i = 0; i < 6; i += 1) {
     const a = -Math.PI / 2 + (i * Math.PI) / 3;
@@ -242,7 +308,7 @@ const frame = (now) => {
 
   // the elevator — sessions and other workplaces live behind these doors
   const ev = { x: 340, y: 560 };
-  ctx.fillStyle = '#e8dcc4'; ctx.strokeStyle = PAL.wall; ctx.lineWidth = 2;
+  ctx.fillStyle = PAL.wood; ctx.strokeStyle = PAL.wall; ctx.lineWidth = 2;
   rr(ev.x - 26, ev.y - 34, 52, 68, 6); ctx.fill(); ctx.stroke();
   ctx.strokeStyle = PAL.faint;
   ctx.beginPath(); ctx.moveTo(ev.x, ev.y - 30); ctx.lineTo(ev.x, ev.y + 30); ctx.stroke();
@@ -253,7 +319,7 @@ const frame = (now) => {
 
   // reception — the Principal's desk
   const rc = scene.reception;
-  ctx.fillStyle = '#e8dcc4'; ctx.strokeStyle = PAL.wall;
+  ctx.fillStyle = PAL.wood; ctx.strokeStyle = PAL.wall;
   rr(rc.x - 56, rc.y - 8, 112, 26, 8); ctx.fill(); ctx.stroke();
   ctx.fillStyle = PAL.faint; ctx.font = '600 10px system-ui'; ctx.textAlign = 'center';
   ctx.fillText('YOU — RECEPTION', rc.x, rc.y + 32);

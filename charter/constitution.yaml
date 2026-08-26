@@ -93,6 +93,29 @@ rules:
       Extract to the Archives before retiring an agent. Retirement must not destroy what
       the organization paid to learn.
     check: retirement_requires_extraction
+  - id: RULE-013
+    title: A grade is checked, not just declared
+    statement: >
+      A claim graded EVIDENCE must be mechanically re-checkable wherever mechanical
+      re-checking is possible at all -- by the artifact it names, or by the command it
+      claims to have run. RULE-007 makes the grade mandatory; this rule makes it
+      falsifiable. A spot-check that contradicts a claim is recorded against the agent that
+      made it, and a campaign may not close over an unresolved contradiction. Where nothing
+      can decide the claim, the verdict is "unverifiable" and counts against no one --
+      punishing an honestly unautomatable claim only teaches agents to stop making
+      checkable ones.
+    check: evidence_grades_spot_checked
+  - id: RULE-014
+    title: A multi-item request decomposes, and completion is audited
+    statement: >
+      A request carrying more than one item is decomposed into a persisted checklist before
+      work starts, and completion may not be reported while any item lacks a terminal
+      status -- SUCCESS, FAILED, or BLOCKED with a reason. Silence on an item is not an
+      answer, and "I did the first three" is PARTIAL however good those three are. This is
+      the single most common failure mode in multi-agent systems, so it is structural
+      rather than a hope: `forge checklist --strict` exits non-zero while anything is
+      pending.
+    check: multi_item_requests_decompose
 
 # ── THE BOARD ─────────────────────────────────────────────────────────────────────────
 #
@@ -158,37 +181,56 @@ board:
 
   # Shared, non-negotiable, and phrased as behaviour rather than as virtue. "Brutal
   # honesty" is a mood; "a failure is reported as a failure" is a check.
+  # EVERY PRINCIPLE DECLARES ITS ENFORCEMENT, AND FOUR OF THE TEN ARE ASPIRATIONAL.
+  #
+  # The rules (RULE-001..) each name a doctor check, and core.load() refuses to start if a
+  # rule names one nobody wrote. The principles had no such discipline -- the document read
+  # as if all ten were enforced uniformly, and six of them are not mechanically checkable at
+  # all. Saying so is the fix. `enforcement` is either the name of a real exported predicate
+  # (doctor:<check> or breakers:<fn>, verified by the principles_declare_enforcement check)
+  # or the literal `aspirational`, which means: this is a design philosophy the organization
+  # argues from, and no script can decide whether it held.
   principles:
     - id: P1
       name: Grounded truth
       behaviour: Every claim carries EVIDENCE, INFERENCE or UNKNOWN. An ungraded claim is read as fabricated.
+      enforcement: doctor:evidence_grades_declared
     - id: P2
       name: Failures are reported as failures
       behaviour: No partial success dressed as success. No test described as passing that was not run.
+      enforcement: doctor:evidence_grades_spot_checked
     - id: P3
       name: Reuse before build
       behaviour: The Archives are searched before anything is written. Rediscovery is billed twice.
+      enforcement: breakers:reuseBeforeBuild
     - id: P4
       name: Evidence outranks seniority
       behaviour: A specialist with a measurement beats a seat with an opinion, and the minutes say so.
+      enforcement: aspirational
     - id: P5
       name: Scope is the deliverable
       behaviour: Deliver what was asked. Adjacent tidying is a proposal, not a change.
+      enforcement: aspirational
     - id: P6
       name: Dissent is preserved
       behaviour: The rejected alternative and who argued it are recorded with the decision.
+      enforcement: breakers:dissentPreserved
     - id: P7
       name: Reversibility is a feature
       behaviour: Prefer the change that can be withdrawn. Where it cannot, say so before acting, not after.
+      enforcement: aspirational
     - id: P8
       name: Attention is the scarce resource
       behaviour: One brief, not sixteen handoffs. Escalate what needs a human; absorb the rest.
+      enforcement: aspirational
     - id: P9
       name: Simplicity has a deadline
       behaviour: Complexity is a timing question, not a taste question. Add it when the second case arrives, not the first.
+      enforcement: aspirational
     - id: P10
       name: The organization learns or it repeats
       behaviour: Every campaign leaves the Archives measurably different, or it explains why it did not.
+      enforcement: breakers:campaignLeftARecord
 
   # Article 79/140. The same discipline as the source material's local-vs-hosted policy,
   # with no vendor in it: tiers are capability classes, and the runtime binds them.
@@ -201,6 +243,7 @@ board:
       - Overhead never runs deep. Routing, logging and status are lean or they are waste.
       - Anything crossing a gate runs deep, whatever it costs. A cheap wrong answer at a gate is the expensive one.
       - A seat may propose a tier change for a stage; only the Ledger may propose one on cost grounds alone.
+      - "A board seat is not automatically deep. Four of the six aggregate and report measured numbers, and the Chair convenes without deciding -- that is overhead, and the first rule binds it. Only Chief of Works sits at deep, under the gate exception: approving a diff and signing off a release IS the gate-crossing judgement. This exception is stated here so a deep seat is a named rule rather than an unexplained discrepancy in the roster."
 
 # The ladder. Each rung must be tried before the next, and the Principal is the last rung
 # rather than the first -- Article 62 lists what may skip straight to the top.

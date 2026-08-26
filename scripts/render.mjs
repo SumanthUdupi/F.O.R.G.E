@@ -104,6 +104,39 @@ export const agentMarkdown = (a, org) => {
   if (a.knows) {
     L.push('');
     L.push(`**You are the meta-specialist for this division.** You do not perform the task — you know ${wrap(a.knows)}, and you deploy the right specialist. Assigning yourself the work is the failure RULE 005 exists to prevent.`);
+
+    /*
+     * THE MANAGER'S OWN TEAM, COMPOSED FROM THE ROSTER.
+     *
+     * `docs/EXTENDING.md` told people that adding a specialist to roster.yaml is enough —
+     * "the manager already knows, by construction". It was not true. No manager prompt named
+     * a single specialist: `grep -c backend-engineer agents/engineering-manager.md` returned
+     * 0. A manager was told it routes, told never to perform, and never told WHO IT HAS.
+     *
+     * Routing still worked, because staffing happens in the deterministic router — but a
+     * manager reasoning about its own division was doing it blind, and the documentation was
+     * describing a mechanism that did not exist. Composing the team here makes the promise
+     * true rather than deleting it, and because it is build output it can never drift: add a
+     * specialist to the roster, rebuild, and the manager's list is already correct.
+     */
+    const team = (org.byDivision.get(a.division) || []).filter((x) => x.role === 'specialist');
+    if (team.length) {
+      L.push('');
+      L.push(`### Your division — ${team.length} specialist${team.length === 1 ? '' : 's'}`);
+      L.push('');
+      L.push('Composed from the roster at build time, not remembered. This list is always current; if someone is missing, they are missing from `registry/roster.yaml`.');
+      L.push('');
+      L.push('| Specialist | Owns | Capabilities | Writes | Tier |');
+      L.push('|---|---|---|---|---|');
+      for (const s of team) {
+        L.push(`| \`${s.name}\` | ${String(s.owns).replace(/\|/g, '\\|')} | ${(s.capabilities || []).join(', ') || '—'} | ${s.writes ? 'yes' : 'no'} | ${s.model} |`);
+      }
+      L.push('');
+      const writers = team.filter((s) => s.writes).map((s) => s.name);
+      L.push(writers.length
+        ? `Two of these write to the same files if you batch them together: ${writers.join(', ')}. That is the collision RULE 005 makes your problem, not theirs.`
+        : 'Nobody in this division writes. Every output here is a report, and a report that recommends a change is not the change.');
+    }
   }
   if (a.dissents_when) {
     L.push('');

@@ -26,7 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { load, ROOT, resolveContract, registerWorkspace, listWorkspaces } from './core.mjs';
 import { composeVector } from './vector.mjs';
-import { readLedger, derive, files, measuredSpend, estimateStages, listSessions } from './ledger.mjs';
+import { readLedger, readLedgerAsync, derive, derivedMemory, files, measuredSpend, estimateStages, listSessions } from './ledger.mjs';
 import { profileWorkspace, loadOverlay, propose, applyProposal } from './learn.mjs';
 import { runDoctor } from './doctor.mjs';
 import * as mailbox from './mailbox.mjs';
@@ -223,7 +223,7 @@ export const rewardsPayload = (cwd = process.cwd()) => {
   }
   streaks.sort((a, b) => b.streak - a.streak);
   improved.sort((a, b) => b.delta - a.delta);
-  const d = derive(readLedger(cwd));
+  const d = derivedMemory(cwd);
   const reliable = Object.entries(d.memory)
     .filter(([, m]) => m.n >= 3 && m.reliability >= 0.75)
     .sort((a, b) => b[1].reliability - a[1].reliability)
@@ -318,6 +318,75 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
       if (p === '/api/org') return json(res, orgPayload(org));
       if (p === '/api/state') return json(res, statePayload(org, wcwd));
 
+      /**
+       * Inventory — every agent, skill, connector and division in one place.
+       *
+       * All of it is DERIVED. There is no inventory state to keep in sync, because every
+       * item here already exists as a file the organization loads anyway: the roster, this
+       * workspace's memory, the host's skills directory, the host's MCP config. An inventory
+       * holding its own copy would be a second source of truth about who exists, which is
+       * the class of bug this repo is arranged to avoid.
+       *
+       * Connectors are DISPLAY ONLY. Connecting or disconnecting an MCP server is a host
+       * action, and a governance surface offering to do it would be claiming an authority
+       * it does not have.
+       */
+      if (p === '/api/inventory') {
+        const mem = derivedMemory(wcwd).memory;
+        const agents = org.all.map((a) => {
+          const m = mem[a.name];
+          return {
+            name: a.name, id: a.id, role: a.role, division: a.division, model: a.model,
+            writes: !!a.writes, capabilities: a.capabilities || [], owns: a.owns,
+            reliability: m ? m.reliability : null,
+            n: m ? m.n : 0,
+            evidenceAccuracy: m && m.evidence ? m.evidence.accuracy : null,
+            downtrend: !!(m && m.trend && m.trend.downtrend),
+          };
+        });
+
+        const skills = [];
+        for (const dir of [path.join(ROOT, 'skills'), path.join(process.env.HOME || '', '.claude', 'skills')]) {
+          try {
+            for (const name of fs.readdirSync(dir)) {
+              const md = path.join(dir, name, 'SKILL.md');
+              if (!fs.existsSync(md)) continue;
+              const head = fs.readFileSync(md, 'utf8').slice(0, 800);
+              const desc = (head.match(/^description:\s*(.+)$/m) || [])[1] || '';
+              skills.push({ name, description: desc.replace(/^["']|["']$/g, '').slice(0, 180), source: dir.includes('.claude') ? 'host' : 'forge' });
+            }
+          } catch { /* a missing skills dir is a host without skills, not an error */ }
+        }
+
+        const connectors = [];
+        try {
+          const cfg = JSON.parse(fs.readFileSync(path.join(process.env.HOME || '', '.claude', 'settings.json'), 'utf8'));
+          for (const [name, spec] of Object.entries(cfg.mcpServers || {})) {
+            connectors.push({ name, kind: spec.type || (spec.command ? 'stdio' : 'unknown') });
+          }
+        } catch { /* no settings, or no MCP block — both ordinary */ }
+
+        const divisions = org.constitution.divisions.map((d) => {
+          const members = org.byDivision.get(d.id) || [];
+          const scored = members.map((a) => mem[a.name]).filter((m) => m && m.n > 0);
+          return {
+            id: d.id,
+            name: d.name,
+            seat: org.seatOf.get(d.id) || null,
+            headcount: members.length,
+            specialists: members.filter((a) => a.role === 'specialist').length,
+            observed: scored.length,
+            avgReliability: scored.length ? Number((scored.reduce((s, m) => s + m.reliability, 0) / scored.length).toFixed(3)) : null,
+            neverSelected: members.filter((a) => a.role === 'specialist' && !mem[a.name]).map((a) => a.name),
+          };
+        });
+
+        return json(res, {
+          agents, skills, connectors, divisions,
+          counts: { agents: agents.length, skills: skills.length, connectors: connectors.length, divisions: divisions.length },
+        });
+      }
+
       if (p === '/api/doctor') {
         const r = runDoctor(org);
         return json(res, { ok: r.ok, failures: r.failures, warnings: r.warnings, lines: r.lines });
@@ -327,15 +396,15 @@ export const createDeck = ({ cwd = process.cwd() } = {}) => {
         const body = await readBody(req);
         const request = String(body.request || '').slice(0, 2000);
         if (!request.trim()) return json(res, { error: 'a plan needs a request' }, 400);
-        const memory = derive(readLedger(wcwd)).memory;
+        const memory = derivedMemory(wcwd).memory;
         const mode = ['direct', 'focused', 'standard', 'campaign'].includes(body.mode) ? body.mode : null;
         const { routingBias } = await import('./tuning.mjs');
         const vector = composeVector(request, org, { memory, mode, bias: routingBias(wcwd) });
-        return json(res, { ...vector, cost: estimateStages(vector.stages, readLedger(wcwd)) });
+        return json(res, { ...vector, cost: estimateStages(vector.stages, await readLedgerAsync(wcwd)) });
       }
 
       if (p === '/api/learn' && req.method === 'POST') {
-        const rows = readLedger(wcwd);
+        const rows = await readLedgerAsync(wcwd);
         const profile = profileWorkspace(wcwd);
         const result = propose(org, { rows, profile });
         const f = files(wcwd);

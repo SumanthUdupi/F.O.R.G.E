@@ -50,6 +50,29 @@ base:
     - "Compression never outranks precision. A terse handoff that drops the failing case is not lean, it is wrong - cut ceremony, never content."
     - Never report a verification that was not run.
     - An objection must name what would satisfy it, or it is an opinion.
+    - "A claim of EVIDENCE inherited from a prior agent's HANDOFF, and never independently re-checked against the source, is downgraded to INFERENCE before it justifies an action. Paraphrase compounds over hops; this is what stops a chain of agents turning one guess into a fact."
+
+# ── Contract weight, scaled to the effort mode ──────────────────────────────────────
+#
+# `detectMode()` in router.mjs classifies every request as direct | focused | standard |
+# campaign. That classification picked a model tier and was then discarded, so a one-line
+# typo fix and a twelve-stage migration paid the identical 17-field contract.
+#
+# This is not a weakening of RULE 009. It matches the auditability COST to the auditability
+# STAKES: the trimmed fields become OPTIONAL rather than forbidden, so an agent with a real
+# alternative to report on a small task still reports it. `standard` and `campaign` are
+# deliberately absent — the full contract applies there, exactly as before.
+#
+# Only DISPATCH consults this. The rendered agent file carries the full contract, because at
+# build time nobody knows what mode the next request will be.
+by_mode:
+  direct:
+    # A question, a lookup, a one-line edit. If the answer is wrong the cost is one more
+    # message, and ALTERNATIVES_REJECTED: none five times over teaches nobody anything.
+    fields_required: [STATUS, SUMMARY, EVIDENCE_GRADE]
+  focused:
+    # One well-understood change in one place. Enough to check the work and find the diff.
+    fields_required: [STATUS, SUMMARY, EVIDENCE_GRADE, ARTIFACTS]
 
 by_role:
   board:

@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { load } from '../scripts/core.mjs';
+import { load, ROOT } from '../scripts/core.mjs';
 import { observe } from '../scripts/ledger.mjs';
 import * as mailbox from '../scripts/mailbox.mjs';
 import { briefing } from '../scripts/learn.mjs';
@@ -227,7 +227,23 @@ describe('one-command hook install', () => {
     assert.deepEqual(out.permissions.allow, ['Bash(ls)']);
     assert.ok(out.hooks.Stop, 'an unrelated hook was clobbered');
     assert.ok(out.hooks.UserPromptSubmit && out.hooks.SessionStart);
-    assert.match(out.hooks.UserPromptSubmit[0].hooks[0].command, /CLOSE THE LEDGER/);
+    const command = out.hooks.UserPromptSubmit[0].hooks[0].command;
+    // The command is `echo <json-string-literal>` — the payload is double-encoded so the
+    // shell hands the runtime valid JSON. Parse twice: once to unwrap the shell literal,
+    // once for the payload itself.
+    const gate = JSON.parse(JSON.parse(command.replace(/^echo /, ''))).hookSpecificOutput.additionalContext;
+    // The gate is paid on EVERY turn, so it must carry the exit condition and the three
+    // instructions that only work if they arrive before any tool call. The full governance
+    // text used to live here and now lives in `plan --with-policy`, paid once per campaign
+    // rather than once per prompt — so this asserts INTENT, not the old wording.
+    assert.match(gate, /answer it directly/, 'the trivial-request exit must come first, or it is paid in full before it is reached');
+    assert.match(gate, /plan "<request>"/, 'the gate must name the routing command');
+    assert.match(gate, /checklist/, 'the model is what decomposes a multi-item request; the hook is the only place it is told to (RULE 014)');
+    assert.match(gate, /observe --agent/, 'a campaign that never closes its ledger teaches nothing');
+    // The SIZE is the feature. The previous gate measured 186 words and was injected before
+    // every prompt including one-word questions; letting it grow back gives that cost away.
+    const words = gate.split(/\s+/).filter(Boolean).length;
+    assert.ok(words < 100, `the per-turn gate is ${words} words; it is paid on every prompt and must stay short`);
     assert.ok(out.env.FORGE_HOME);
   });
 });
@@ -566,5 +582,31 @@ describe('a reference the Principal supplies reaches the agent', () => {
     assert.ok((p.capabilities || []).includes('playwright'));
     assert.match(p.knows_reference, /claude\.com\/plugins\/playwright/, 'the expert is not pointed at the reference');
     assert.match(p.refuses, /sleep|selector/i, 'the expert refuses none of the habits that make suites flaky');
+  });
+});
+
+/**
+ * Completions are a surface like any other: a command the CLI has and the completion does not
+ * is a command nobody discovers. This is the same "declared vs conveyed" rule the render
+ * tests enforce on agent files, applied to the shell.
+ */
+describe('shell completions cover the real command surface', () => {
+  test('every dispatcher command appears in both completion scripts', () => {
+    const cli = fs.readFileSync(path.join(ROOT, 'scripts', 'forge.mjs'), 'utf8');
+    const commands = [...cli.matchAll(/^  case '([a-z][a-z-]*)':/gm)].map((m) => m[1]);
+    assert.ok(commands.length > 20, `only found ${commands.length} commands — the regex has drifted from the dispatcher`);
+    for (const shell of ['forge.bash', 'forge.zsh']) {
+      const body = fs.readFileSync(path.join(ROOT, 'completions', shell), 'utf8');
+      for (const c of commands) {
+        assert.ok(body.includes(c), `${shell} does not offer "${c}" — a command nobody can tab to is a command nobody finds`);
+      }
+    }
+  });
+
+  test('the enum flags offer exactly the values the code accepts', () => {
+    const body = fs.readFileSync(path.join(ROOT, 'completions', 'forge.bash'), 'utf8');
+    for (const v of ['ok partial fail blocked', 'direct focused standard campaign', 'EVIDENCE INFERENCE UNKNOWN', 'SUCCESS FAILED BLOCKED', 'lean standard deep']) {
+      assert.ok(body.includes(v), `completion is missing the value set "${v}"`);
+    }
   });
 });

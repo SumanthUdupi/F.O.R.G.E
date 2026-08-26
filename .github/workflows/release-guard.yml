@@ -1,0 +1,58 @@
+# The release guard: a tag may carry logic, never learned state.
+#
+# `.gitignore` already excludes `.forge/`, and that is why nothing has leaked so far. But an
+# ignore rule is a default, not an enforcement — `git add -f` walks straight past it, and so
+# does a stray `git add -A` run from inside a workspace with a different .gitignore. The
+# distance between "we have never done that" and "that cannot happen" is this file.
+#
+# It is the same argument the repo makes about doctor: the rule that isn't enforced by a
+# check is a comment with a serial number. So the ignore rule gets a check.
+#
+# What would leak without it: `.forge/ledger.jsonl` names real agents against real campaigns
+# in the author's own workspaces; `profile.yaml` records the stack, test command and house
+# rules of a private codebase; `overlay.yaml` records the standing instructions the Principal
+# approved. None of that is anyone else's business, and all of it is one careless `-f` away
+# from a public tag.
+
+name: release guard
+
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+
+jobs:
+  no-learned-state-in-git:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: refuse a release that tracks learned state
+        run: |
+          # Tracked files only. An untracked .forge/ sitting in a working copy is expected
+          # and fine — it is what the tool is FOR. The failure is tracking it.
+          leaked=$(git ls-files | grep -E '(^|/)\.forge/|(^|/)memory\.json$|(^|/)ledger\.jsonl$|(^|/)overlay\.yaml$|(^|/)profile\.yaml$|(^|/)proposals\.json$|(^|/)applied\.jsonl$|(^|/)tuning\.json$' || true)
+          if [ -n "$leaked" ]; then
+            echo "::error::a workspace-learned file is tracked by git — release blocked"
+            echo "$leaked" | while read -r f; do echo "::error file=$f::$f is learned state and must never be committed"; done
+            echo ""
+            echo "These files record what the organization learned about ONE private workspace:"
+            echo "who was reliable at what, the stack, the test command, the approved standing"
+            echo "instructions. Shipping them would publish someone's codebase habits."
+            echo ""
+            echo "Fix: git rm --cached <file>, confirm .gitignore covers it, and re-push."
+            exit 1
+          fi
+          echo "clean: no learned state is tracked"
+
+      - name: .gitignore still excludes the state directory
+        run: |
+          # Belt and braces. If someone removes the ignore rule, the check above only fails
+          # once somebody actually commits something — this fails immediately, at the change
+          # that made the leak possible rather than at the leak.
+          grep -qE '^\.forge/?$' .gitignore || {
+            echo "::error::.gitignore no longer excludes .forge/ — the leak becomes a matter of time"
+            exit 1
+          }
+          echo "clean: .gitignore excludes .forge/"

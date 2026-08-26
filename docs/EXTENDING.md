@@ -11,9 +11,48 @@ until the next build and then silently does not.
 # the loop, every time
 $EDITOR registry/roster.yaml
 node scripts/forge.mjs doctor          # will it be legal?
-node scripts/forge.mjs build --apply   # regenerate the 64 agent files
-node --test tests/
+node scripts/forge.mjs build --apply   # regenerate every agent file
+node --test tests/*.test.mjs
+node scripts/forge.mjs bench-routing   # did this change an existing route?
 ```
+
+Or skip the editor entirely — the scaffolder does the same thing and refuses the mistakes:
+
+```bash
+forge new-agent --division DIV-ENG --name cache-engineer \
+  --owns "What is cached, for how long, and what makes it wrong." \
+  --capabilities caching,performance --stance "..." --refuses "..." [--apply]
+```
+
+It prints the `routing.yaml` stub you also need, refuses a `owns` that overlaps an existing
+specialist by more than 60% (RULE 004), and refuses a division already at the RULE 003
+ceiling of 10. See `docs/examples/add-a-specialist.md` for the full twenty-minute walkthrough.
+
+### Does the manager know?
+
+Yes, and it is worth saying exactly why, because for most of this repo's life the answer was
+**no** while the documentation said otherwise.
+
+Manager prompts are **composed** at build time from every specialist in the division — open
+`agents/engineering-manager.md` after a build and the new agent is in its team table with its
+`owns` and capabilities verbatim. There is no separate registration step.
+
+That was not true until 2026-08-26. `grep -c backend-engineer agents/engineering-manager.md`
+returned **0**: no manager prompt named a single specialist, and this document told people it
+did. Routing still worked — staffing happens in the deterministic router, not in the manager's
+head — but a manager reasoning about its own division was doing it blind.
+`tests/render.test.mjs` now asserts that every manager names every specialist in its division,
+so the claim above cannot quietly become false again.
+
+The failure mode people worry about — "I added an agent and the manager never uses it" — has
+three real causes, and none of them is the manager's memory:
+
+1. **You edited `agents/*.md` instead of `roster.yaml`.** The next build overwrote it.
+2. **You skipped the routing rule.** The agent exists and no request phrasing reaches it.
+   `doctor` warns "capability supplied but never asked for" — treat it as a hard stop.
+3. **Reliability starts at the neutral prior** (0.7 over 4 observations), so a stronger
+   incumbent out-scores a newcomer for the first few campaigns. That is RULE 007 working, not
+   a bug. Confirm the route exists with `forge plan "<a request that should reach it>"`.
 
 ---
 

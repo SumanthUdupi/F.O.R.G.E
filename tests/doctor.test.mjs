@@ -178,3 +178,72 @@ describe('hygiene', () => {
     assert.ok(!HYGIENE.conflicts_are_symmetric(o).ok);
   });
 });
+
+/**
+ * The checks added so the parts of the charter that were previously only PROSE now have
+ * somewhere to fail. Same discipline: plant the violation, assert the catch.
+ */
+describe('the enforcement added for the improvement backlog', () => {
+  test('a principle declaring no enforcement fails — the document must not imply a check it lacks', () => {
+    const o = clone();
+    delete o.constitution.board.principles[0].enforcement;
+    assert.ok(!HYGIENE.principles_declare_enforcement(o).ok);
+  });
+
+  test('a principle naming a predicate nobody wrote fails — the exact way a rule once became a silent no-op', () => {
+    const o = clone();
+    o.constitution.board.principles[0].enforcement = 'breakers:doesNotExist';
+    assert.ok(!HYGIENE.principles_declare_enforcement(o).ok);
+    o.constitution.board.principles[0].enforcement = 'doctor:alsoDoesNotExist';
+    assert.ok(!HYGIENE.principles_declare_enforcement(o).ok);
+    o.constitution.board.principles[0].enforcement = 'wishful:thinking';
+    assert.ok(!HYGIENE.principles_declare_enforcement(o).ok, 'an unknown namespace must not pass');
+  });
+
+  test('"aspirational" is accepted — saying a principle is unchecked is the honest option, not a failure', () => {
+    const o = clone();
+    for (const p of o.constitution.board.principles) p.enforcement = 'aspirational';
+    assert.ok(HYGIENE.principles_declare_enforcement(o).ok);
+  });
+
+  test('a circuit breaker with no predicate fails', () => {
+    const o = clone();
+    o.constitution.circuit_breakers.invented_limit = 5;
+    assert.ok(!HYGIENE.circuit_breakers_are_evaluable(o).ok);
+  });
+
+  test('a contract over the field ceiling fails', () => {
+    const o = clone();
+    // One family gaining 40 fields is exactly the silent bloat EXTENDING.md invites.
+    o.contracts.by_family[0].fields.push(...Array.from({ length: 40 }, (_, i) => ({ key: `BLOAT_${i}` })));
+    assert.ok(!HYGIENE.contract_field_count_bounded(o).ok);
+  });
+
+  test('the ceiling counts required fields only — counting optionals too would have failed on day one', () => {
+    // This guards a DECISION, not just code. The source proposal said "> 20 total", and the
+    // heaviest agent already resolves to 23 with optionals included, so adopting the number
+    // as written would have turned doctor red immediately. Anyone re-tightening it trips here.
+    assert.ok(HYGIENE.contract_field_count_bounded(base).ok);
+  });
+
+  test('RULE 013 requires the ledger to be able to carry a checkable claim', () => {
+    assert.ok(CHECKS.evidence_grades_spot_checked(base).ok);
+  });
+
+  test('RULE 013 fails a campaign that closed over a contradicted claim', () => {
+    const o = clone();
+    o.__unresolvedMismatches = [{ agent: 'backend-engineer', campaign: 'C1', why: 'claimed EVIDENCE; the file does not exist' }];
+    assert.ok(!CHECKS.evidence_grades_spot_checked(o).ok);
+  });
+
+  test("RULE 014 needs an owner, or decomposition is everybody's job and nobody's", () => {
+    assert.ok(CHECKS.multi_item_requests_decompose(base).ok);
+    const o = clone();
+    for (const a of o.all) a.capabilities = (a.capabilities || []).filter((c) => c !== 'checklist');
+    assert.ok(!CHECKS.multi_item_requests_decompose(o).ok);
+  });
+
+  test('every rendered prompt stays under the size ceiling', () => {
+    assert.ok(HYGIENE.agent_prompt_size_bounded(base).ok);
+  });
+});

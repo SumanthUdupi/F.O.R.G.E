@@ -85,14 +85,23 @@ export const PRIOR = { reliability: 0.7, recent: 0.7, availability: 1 };
  * Article 145: never route on cost alone — cost is the smallest weight and cannot reach
  * zero, so a cheap agent can win a tie and can never win on price alone.
  */
-export const scoreAgent = (agent, capability, org, memory = {}, bias = {}) => {
+export const scoreAgent = (agent, capability, org, memory = {}, bias = {}, phase = null) => {
   const w = org.routing.score;
   const m = memory[agent.name] || {};
   const caps = agent.capabilities || [];
   if (!caps.includes(capability)) return null;
 
   // A specialist with three capabilities is more focused on each than one with ten.
-  const match = 1 / Math.sqrt(caps.length);
+  //
+  // PHASE WEIGHT. The same score served every phase, and the phases do not value the same
+  // thing. Getting the right agent into `design` matters enormously — a wrong architectural
+  // call is paid for through the whole campaign. Getting the right one into `verify` matters
+  // much less: any competent verifier finds the same failing test, so paying a premium there
+  // buys little. Exponentiating the MATCH term (never reliability, never the cost term)
+  // sharpens or flattens the preference between qualified agents without ever letting an
+  // unqualified one in — the capability check above already refused those.
+  const phaseWeight = (org.routing.capability_weight && phase && org.routing.capability_weight[phase]) || 1;
+  const match = (1 / Math.sqrt(caps.length)) ** phaseWeight;
   const reliability = m.reliability ?? PRIOR.reliability;
   const recent = m.byClass?.[capability]?.rate ?? PRIOR.recent;
   const tierCost = { lean: 1, standard: 0.6, deep: 0.3 }[agent.model] ?? 0.6;
@@ -133,13 +142,23 @@ export const scoreAgent = (agent, capability, org, memory = {}, bias = {}) => {
  * Managers are excluded from staffing. A manager who takes the task has become a
  * specialist with a title, which RULE 005 exists to prevent -- and doctor asserts it.
  */
-export const selectAgents = (capabilities, org, memory = {}, bias = {}) => {
+export const selectAgents = (capabilities, org, memory = {}, bias = {}, phases = {}) => {
   const chosen = [];
   const considered = [];
   for (const cap of [...new Set(capabilities)]) {
-    const ranked = org.all
-      .filter((a) => a.role === 'specialist')
-      .map((a) => scoreAgent(a, cap, org, memory, bias))
+    // Indexed lookup, with the full scan kept as a fallback.
+    //
+    // `org.byCapability` is built in core.load() from exactly the predicate this filter used
+    // — specialists holding this capability — so the candidate SET is identical and only the
+    // cost of finding it changed. Scoring, ordering and tie-breaks are untouched; this is a
+    // pure performance change, and tests/planning.test.mjs asserts both paths rank alike.
+    //
+    // The fallback is not defensive padding: several tests hand-build an org object, and an
+    // index that quietly returned nothing would look like "no agent can do this" — a routing
+    // failure wearing the costume of a roster failure.
+    const pool = org.byCapability ? org.byCapability.get(cap) || [] : org.all.filter((a) => a.role === 'specialist');
+    const ranked = pool
+      .map((a) => scoreAgent(a, cap, org, memory, bias, phases[cap] || null))
       .filter(Boolean)
       .sort((a, b) => b.score - a.score || a.agent.id.localeCompare(b.agent.id));
     if (!ranked.length) continue;

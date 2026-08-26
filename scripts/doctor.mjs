@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ROOT, paths, ui, resolveContract } from './core.mjs';
+import { BREAKERS, PRINCIPLE_CHECKS } from './breakers.mjs';
 
 const CANONICAL_DIVISIONS = [
   'DIV-DIR', 'DIV-WFH', 'DIV-TAL', 'DIV-TRS', 'DIV-DSC', 'DIV-PRD',
@@ -274,7 +275,111 @@ export const CHECKS = {
       ok = false;
       notes.push({ level: 'fail', text: 'evidence_grade is optional; an ungraded claim reads as fact' });
     }
-    if (ok) notes.push({ level: 'pass', text: 'three grades declared, and required in every handoff' });
+    if (ok) notes.push({ level: 'pass', text: 'three grades declared, and required in every handoff — declared, not verified; see evidence_grades_spot_checked' });
+    return { ok, notes };
+  },
+
+  /**
+   * RULE 013 — the grade is checked against reality, not just against the schema.
+   *
+   * `evidence_grades_declared` above proves the GRADING SYSTEM exists. It cannot prove any
+   * particular grade is true, and for a long time nothing could: an agent writing EVIDENCE
+   * about a test it never ran passed every check in this file. That made the most
+   * load-bearing rule in the constitution unfalsifiable.
+   *
+   * This check has two halves, and both matter:
+   *   1. the mechanism must exist and be reachable (verify.mjs, and a rule that names it)
+   *   2. no campaign may sit on unresolved contradictions — a spot-check that caught a false
+   *      EVIDENCE claim and was then ignored is worse than not checking, because it looks
+   *      like diligence.
+   *
+   * Half 2 reads the WORKSPACE ledger, which the shipped repo does not have, so it is silent
+   * rather than failing when there is nothing to judge. A check that fails on a fresh clone
+   * teaches people to ignore it.
+   */
+  evidence_grades_spot_checked(org) {
+    const notes = [];
+    let ok = true;
+
+    const verifier = path.join(ROOT, 'scripts', 'verify.mjs');
+    if (!fs.existsSync(verifier)) {
+      ok = false;
+      notes.push({ level: 'fail', text: 'scripts/verify.mjs is missing — RULE 013 would be enforced by nothing' });
+      return { ok, notes };
+    }
+
+    // The ledger row must be able to CARRY a checkable claim. A verifier over rows that
+    // record no grade and no artifacts can only ever return "unverifiable".
+    const src = fs.readFileSync(path.join(ROOT, 'scripts', 'ledger.mjs'), 'utf8');
+    for (const field of ['grade:', 'artifacts:']) {
+      if (!src.includes(field)) {
+        ok = false;
+        notes.push({ level: 'fail', text: `the ledger row carries no ${field.replace(':', '')} — an EVIDENCE claim would have nothing to check against` });
+      }
+    }
+
+    let unresolved = [];
+    try {
+      unresolved = org.__unresolvedMismatches || [];
+    } catch {
+      unresolved = [];
+    }
+    for (const u of unresolved) {
+      ok = false;
+      notes.push({ level: 'fail', text: `${u.agent} claimed EVIDENCE and the spot-check disagreed (${u.campaign || 'no campaign'}): ${u.why}` });
+    }
+
+    if (ok) {
+      notes.push({
+        level: 'pass',
+        text: unresolved.length === 0 && org.__spotChecksRun
+          ? `evidence claims are spot-checkable and ${org.__spotChecksRun} check(s) found no contradiction`
+          : 'evidence claims are mechanically spot-checkable (forge verify), and no contradiction is outstanding',
+      });
+    }
+    return { ok, notes };
+  },
+
+  /**
+   * RULE 014 — a multi-item request decomposes, and nothing closes over a pending item.
+   *
+   * The mechanism has to exist before the rule means anything, and it has to be reachable
+   * from the CLI — a checklist library nobody can run from a terminal is a library, not an
+   * enforcement. So this checks three things: the module exists, the CLI exposes it, and the
+   * routing hook actually tells the host model to use it. That last one is the load-bearing
+   * part: the model is what decomposes the request, and an instruction that never reaches it
+   * enforces nothing at all.
+   */
+  multi_item_requests_decompose(org) {
+    const notes = [];
+    let ok = true;
+
+    if (!fs.existsSync(path.join(ROOT, 'scripts', 'checklist.mjs'))) {
+      ok = false;
+      notes.push({ level: 'fail', text: 'scripts/checklist.mjs is missing — RULE 014 would be enforced by nothing' });
+      return { ok, notes };
+    }
+    const cli = fs.readFileSync(path.join(ROOT, 'scripts', 'forge.mjs'), 'utf8');
+    if (!cli.includes("case 'checklist'")) {
+      ok = false;
+      notes.push({ level: 'fail', text: 'the CLI exposes no `forge checklist` — the rule cannot be run' });
+    }
+    if (!cli.includes('--strict')) {
+      ok = false;
+      notes.push({ level: 'fail', text: '`forge checklist` has no --strict mode — nothing can exit non-zero on a pending item' });
+    }
+    const hook = fs.readFileSync(path.join(ROOT, 'scripts', 'install.mjs'), 'utf8');
+    if (!/checklist/i.test(hook)) {
+      ok = false;
+      notes.push({ level: 'fail', text: 'the routing hook never mentions the checklist — the model that decomposes the request is never told to' });
+    }
+    // An owner, so the rule is somebody's job and not everybody's.
+    const owner = org.all.find((a) => (a.capabilities || []).includes('checklist'));
+    if (!owner) {
+      ok = false;
+      notes.push({ level: 'fail', text: 'no agent holds the "checklist" capability — RULE 014 has no owner' });
+    }
+    if (ok) notes.push({ level: 'pass', text: `decomposition is enforced by forge checklist --strict, owned by ${owner.name}` });
     return { ok, notes };
   },
 
@@ -463,6 +568,189 @@ export const HYGIENE = {
       }
     }
     if (ok) notes.push({ level: 'pass', text: `${(org.constitution.board.direct_channels || []).length} declared channels, each with a reason` });
+    return { ok, notes };
+  },
+
+  /**
+   * An unbounded prompt is a token-efficiency problem wearing a documentation costume.
+   *
+   * Every agent file is BUILD OUTPUT — composed from the roster entry plus the resolved
+   * contract plus the rules. That means a single line added to `contracts.yaml`'s base block
+   * lands in all 68 files at once, and the cost of that is paid on every dispatch forever.
+   * Nothing measured it. `EXTENDING.md` actively encourages adding contract fields, so the
+   * growth path is not hypothetical, it is documented.
+   *
+   * 12000 bytes is deliberately generous — roughly 3000 tokens, about 40% above today's
+   * largest file. It is a ceiling to catch a regression, not a target to optimise toward.
+   */
+  agent_prompt_size_bounded(org) {
+    const CEILING = 12000;
+    if (!fs.existsSync(paths.agents)) return { ok: true, notes: [{ level: 'warn', text: 'agents/ not built yet' }] };
+    const notes = [];
+    let ok = true;
+    let largest = { name: null, size: 0 };
+    for (const a of org.all) {
+      const p = path.join(paths.agents, `${a.name}.md`);
+      if (!fs.existsSync(p)) continue;
+      const size = fs.statSync(p).size;
+      if (size > largest.size) largest = { name: a.name, size };
+      if (size > CEILING) {
+        ok = false;
+        notes.push({ level: 'fail', text: `${a.name}'s rendered prompt is ${size} bytes — over the ${CEILING}-byte ceiling` });
+      }
+    }
+    if (ok) notes.push({ level: 'pass', text: `every rendered prompt is under ${CEILING} bytes (largest: ${largest.name} at ${largest.size})` });
+    return { ok, notes };
+  },
+
+  /**
+   * The same insurance, one level up: cap the number of contract FIELDS, not just bytes.
+   *
+   * A contract is composed of base + role + every capability family an agent joins, so an
+   * agent with four capabilities can silently inherit four families' worth of fields. Adding
+   * a family is easy and encouraged; nothing made the cost of doing so visible.
+   *
+   * The ceiling counts REQUIRED fields only, at 20. Counting optional fields too was the
+   * first instinct and it is wrong twice over: the heaviest agent already resolves to 23
+   * with optionals, so the check would have failed on the day it shipped, and an optional
+   * field costs a line of prompt but not an answer — it is not the thing that needs bounding.
+   */
+  contract_field_count_bounded(org) {
+    const CEILING = 20;
+    const notes = [];
+    let ok = true;
+    let heaviest = { name: null, n: 0 };
+    for (const a of org.all) {
+      const r = resolveContract(a, org.contracts);
+      if (r.fields.length > heaviest.n) heaviest = { name: a.name, n: r.fields.length, families: r.families };
+      if (r.fields.length > CEILING) {
+        ok = false;
+        notes.push({
+          level: 'fail',
+          text: `${a.name}'s contract requires ${r.fields.length} fields — over the ${CEILING}-field ceiling (families: ${r.families.join(', ') || 'none'})`,
+        });
+      }
+    }
+    if (ok) {
+      notes.push({
+        level: 'pass',
+        text: `no contract exceeds ${CEILING} required fields (heaviest: ${heaviest.name} at ${heaviest.n})`,
+      });
+    }
+    return { ok, notes };
+  },
+
+  /**
+   * Every principle says how it is enforced, and a named enforcer must actually exist.
+   *
+   * The rules had this discipline from the start — `core.load()` refuses to start if a rule
+   * names a check nobody wrote. The principles did not, so the document read as if all ten
+   * were enforced when six of them are philosophy. This closes the gap in both directions:
+   * an undeclared principle fails, and a principle naming a predicate that does not exist
+   * fails too, which is the failure mode that let a rule quietly become a no-op once before.
+   */
+  principles_declare_enforcement(org) {
+    const notes = [];
+    let ok = true;
+    const principles = org.constitution.board.principles || [];
+    let aspirational = 0;
+    for (const p of principles) {
+      const e = p.enforcement;
+      if (!e) {
+        ok = false;
+        notes.push({ level: 'fail', text: `${p.id} (${p.name}) declares no enforcement — it reads as enforced and is not` });
+        continue;
+      }
+      if (e === 'aspirational') {
+        aspirational += 1;
+        continue;
+      }
+      const [kind, fn] = String(e).split(':');
+      if (kind === 'doctor') {
+        if (!CHECKS[fn]) {
+          ok = false;
+          notes.push({ level: 'fail', text: `${p.id} names doctor check "${fn}", which no code implements` });
+        }
+      } else if (kind === 'breakers') {
+        if (!PRINCIPLE_CHECKS[fn]) {
+          ok = false;
+          notes.push({ level: 'fail', text: `${p.id} names breakers:${fn}, which scripts/breakers.mjs does not export` });
+        }
+      } else {
+        ok = false;
+        notes.push({ level: 'fail', text: `${p.id} names enforcement "${e}" in no known namespace (doctor: / breakers: / aspirational)` });
+      }
+    }
+    if (ok) {
+      notes.push({
+        level: 'pass',
+        text: `${principles.length} principles, each declaring enforcement — ${principles.length - aspirational} checked in code, ${aspirational} explicitly aspirational`,
+      });
+    }
+    return { ok, notes };
+  },
+
+  /**
+   * Every circuit breaker in the constitution has a predicate that evaluates it.
+   *
+   * Four of the five were numbers in a markdown table that no code ever read. A limit
+   * nothing evaluates is a comment with a serial number — the same criticism this repo makes
+   * of a rule with no check, applied to itself.
+   */
+  circuit_breakers_are_evaluable(org) {
+    const notes = [];
+    let ok = true;
+    const declared = Object.keys(org.constitution.circuit_breakers || {});
+    for (const name of declared) {
+      if (!BREAKERS[name]) {
+        ok = false;
+        notes.push({ level: 'fail', text: `circuit breaker "${name}" is declared with no predicate in scripts/breakers.mjs` });
+      }
+    }
+    if (ok) notes.push({ level: 'pass', text: `${declared.length} circuit breakers, each with a predicate that can trip` });
+    return { ok, notes };
+  },
+
+  /**
+   * The generated system reference describes the system that actually runs.
+   *
+   * `docs/SYSTEM-REFERENCE.md` is build output from `explain --all`, and the whole argument
+   * for generating it rather than writing it is that it cannot go stale. That argument is
+   * only true if something checks — otherwise it is a generated document that someone
+   * eventually hand-edits, which is the worst of both.
+   *
+   * Checks names rather than diffing the whole file: CI regenerates and `git diff
+   * --exit-code`s it, which catches everything. This catches the case CI cannot — a local
+   * clone whose reference is months old and is being read as current.
+   */
+  system_reference_matches_the_roster(org) {
+    const p = path.join(ROOT, 'docs', 'SYSTEM-REFERENCE.md');
+    if (!fs.existsSync(p)) {
+      return { ok: true, notes: [{ level: 'warn', text: 'docs/SYSTEM-REFERENCE.md has not been generated — run `forge explain --all > docs/SYSTEM-REFERENCE.md`' }] };
+    }
+    const body = fs.readFileSync(p, 'utf8');
+    const missing = org.all.filter((a) => !body.includes(`\`${a.name}\``)).map((a) => a.name);
+    const notes = [];
+    let ok = true;
+    if (missing.length) {
+      ok = false;
+      notes.push({ level: 'fail', text: `the system reference does not mention ${missing.slice(0, 4).join(', ')}${missing.length > 4 ? ` and ${missing.length - 4} more` : ''} — regenerate it` });
+    }
+    // And the reverse: a name in the document that is no longer on the roster is a reader
+    // being told about an agent that does not exist, which is worse than an omission.
+    const known = new Set(org.all.map((a) => a.name));
+    // Scoped to the AGENT row shape — `| \`name\` | role |` — not to any backticked word in
+    // any table. The first version matched the circuit-breaker and model-tier tables too and
+    // reported `rounds`, `standard` and `deep` as departed agents, which is the kind of false
+    // alarm that teaches people to stop reading doctor output.
+    const ghosts = [...body.matchAll(/\| `([a-z][a-z0-9-]+)` \| (?:board|manager|specialist) \|/g)]
+      .map((m) => m[1])
+      .filter((n) => !known.has(n));
+    if (ghosts.length) {
+      ok = false;
+      notes.push({ level: 'fail', text: `the system reference still lists ${[...new Set(ghosts)].join(', ')}, who left the roster` });
+    }
+    if (ok) notes.push({ level: 'pass', text: `the generated system reference names all ${org.all.length} agents and no ghosts` });
     return { ok, notes };
   },
 

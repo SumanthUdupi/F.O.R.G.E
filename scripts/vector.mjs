@@ -13,6 +13,7 @@
  */
 
 import { detectMode, matchRules, matchGates, selectAgents } from './router.mjs';
+import { resolveContract } from './core.mjs';
 
 /**
  * Stages these rules produce survive every cap, each with its own reason.
@@ -105,7 +106,12 @@ export const composeVector = (request, org, { memory = {}, mode: modeOverride = 
   }
 
   const allCaps = [...capsByPhase.values()].flatMap((m) => [...m.keys()]);
-  const { staffed, considered } = selectAgents(allCaps, org, memory, bias);
+  // Which phase each capability is being asked for in, so the router can weight the match
+  // term by what that phase actually values. A capability asked for in two phases takes the
+  // first — the earlier phase is the one whose wrong choice is paid for the longest.
+  const phaseOf = {};
+  for (const [phase, caps] of capsByPhase) for (const c of caps.keys()) if (!(c in phaseOf)) phaseOf[c] = phase;
+  const { staffed, considered } = selectAgents(allCaps, org, memory, bias, phaseOf);
   const agentFor = new Map();
   for (const s of staffed) for (const c of s.capabilities) agentFor.set(c, s);
 
@@ -257,6 +263,20 @@ export const composeVector = (request, org, { memory = {}, mode: modeOverride = 
     staffed,
     considered,
     sequential: batches.filter((b) => !b.parallel).length,
+    // The contract each staffed agent owes AT THIS MODE. The rendered agent file always
+    // carries the full contract, because at build time nobody knows what the next request
+    // will be; the Vector knows, so it is the honest place to say "for this one, these
+    // fields". A caller dispatching from the Vector reads this instead of the file's.
+    contract: Object.fromEntries(
+      staffed.map((s2) => {
+        // `staffed` entries carry the agent OBJECT under `.agent`, not its name — checked
+        // against selectAgents rather than guessed from the field name.
+        const agent = typeof s2.agent === 'string' ? org.byName.get(s2.agent) : s2.agent;
+        if (!agent || !agent.name) return [null, null];
+        const r = resolveContract(agent, org.contracts, { mode: decided.mode });
+        return [agent.name, { required: r.fields.map((f) => f.key), optional: r.optional.map((f) => f.key) }];
+      }).filter(([, v]) => v),
+    ),
     note: null,
   };
 };

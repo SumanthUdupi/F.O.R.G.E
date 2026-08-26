@@ -30,6 +30,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const state = {
   org: null, live: null, mail: null, tokens: null, rewards: null, wsinfo: null, sessions: null, runsActive: [],
   ws: null, drawer: null, recipient: 'chair', draft: {}, mode: 'ask', run: null, orgSessions: null, activity: null, board: null,
+  inventory: null, inventoryTab: 'agents', inventoryQuery: '',
 };
 
 const api = async (path, body) => {
@@ -343,7 +344,58 @@ const missionDrawer = () => {
 };
 
 
-const DRAWERS = { mission: missionDrawer, person: (id) => personDrawer(id), room: (id) => roomDrawer(id), board: boardDrawer, reception: receptionDrawer, sessions: sessionsDrawer };
+/**
+ * Inventory — the one place that answers "what exists".
+ *
+ * Four tabs over one derived payload. The reason this earns a panel rather than four CLI
+ * commands: the questions people actually have are comparative — is this division thin, is
+ * that agent never selected, is a skill installed twice — and comparison needs one screen.
+ *
+ * `never selected` is the column that justifies it. An agent nobody has ever routed to is
+ * invisible in every other view here, because every other view is a list of things that
+ * happened, and this is the only one that lists things that did not.
+ */
+const inventoryDrawer = () => {
+  const inv = state.inventory;
+  if (!inv) return `<div class="dhead"><h2>Inventory</h2></div><p class="empty">Reading what exists…</p>`;
+  const tab = state.inventoryTab || 'agents';
+  const q = (state.inventoryQuery || '').toLowerCase();
+  const tabs = [['agents', `Agents (${inv.counts.agents})`], ['skills', `Skills (${inv.counts.skills})`], ['connectors', `Connectors (${inv.counts.connectors})`], ['divisions', `Divisions (${inv.counts.divisions})`]];
+
+  const bar = `
+    <div class="invtabs">${tabs.map(([k, label]) => `<button class="invtab" data-invtab="${k}" aria-current="${tab === k}">${esc(label)}</button>`).join('')}</div>
+    <div class="askrow"><input type="text" id="invsearch" placeholder="filter…" autocomplete="off" value="${esc(state.inventoryQuery || '')}"></div>`;
+
+  let body = '';
+  if (tab === 'agents') {
+    const rows = inv.agents.filter((a) => !q || a.name.includes(q) || (a.capabilities || []).some((c) => c.includes(q)) || String(a.division).toLowerCase().includes(q));
+    body = rows.length ? rows.map((a) => {
+      const rel = a.reliability === null ? '<span class="invdim">never selected</span>' : `${a.reliability} over ${a.n}`;
+      const flag = a.downtrend ? ' <span class="invwarn">declining</span>' : '';
+      const ev = a.evidenceAccuracy === null ? '' : ` · evidence ${a.evidenceAccuracy}`;
+      return `<button class="invrow" data-person="${esc(a.name)}">
+        <span class="invdot ${a.reliability === null ? 'off' : a.reliability < 0.6 ? 'bad' : 'on'}"></span>
+        <span class="invname">${esc(a.name)}<small>${esc(a.division)} · ${esc(a.role)} · ${esc(a.model)}${a.writes ? ' · writes' : ''}</small></span>
+        <span class="invmeta">${rel}${ev}${flag}</span></button>`;
+    }).join('') : '<p class="empty">Nothing matches that.</p>';
+  } else if (tab === 'skills') {
+    const rows = inv.skills.filter((s) => !q || s.name.toLowerCase().includes(q));
+    body = rows.length ? rows.map((s) => `<div class="invrow static"><span class="invname">${esc(s.name)}<small>${esc(s.description) || 'no description'}</small></span><span class="invmeta">${esc(s.source)}</span></div>`).join('') : '<p class="empty">Nothing matches that.</p>';
+  } else if (tab === 'connectors') {
+    body = inv.connectors.length
+      ? inv.connectors.map((c) => `<div class="invrow static"><span class="invname">${esc(c.name)}<small>${esc(c.kind)}</small></span><span class="invmeta">display only</span></div>`).join('')
+      : '<p class="empty">No MCP connectors configured on this host. Connecting one is a host action — not something the organization does on your behalf.</p>';
+  } else {
+    body = inv.divisions.map((d) => `
+      <div class="invrow static"><span class="invname">${esc(d.name)}<small>${esc(d.id)} · ${d.specialists} specialists · seat ${esc(d.seat || '—')}</small></span>
+      <span class="invmeta">${d.avgReliability === null ? '<span class="invdim">no observations</span>' : `avg ${d.avgReliability} over ${d.observed}`}</span></div>
+      ${d.neverSelected.length ? `<p class="hint invnever">never selected: ${d.neverSelected.map(esc).join(', ')}</p>` : ''}`).join('');
+  }
+
+  return `<div class="dhead"><h2>Inventory</h2><p>Everything that exists, derived from the registry and this workspace — nothing here is stored twice.</p></div>${bar}<div class="invlist">${body}</div>`;
+};
+
+const DRAWERS = { mission: missionDrawer, person: (id) => personDrawer(id), room: (id) => roomDrawer(id), board: boardDrawer, reception: receptionDrawer, sessions: sessionsDrawer, inventory: inventoryDrawer };
 
 // ── render: HUD + drawer only. The floor is mounted once and left alone. ─────────────
 
@@ -411,6 +463,11 @@ const refresh = async ({ passive = false } = {}) => {
   try {
     [state.orgSessions, state.activity, state.board] = await Promise.all([api('/api/org-sessions'), api('/api/activity'), api('/api/agent-board')]);
   } catch { state.activity = state.activity || { events: [], busyAgents: [], activeCount: 0 }; }
+  // Inventory is fetched only while its panel is open: it stats the host's skills
+  // directory, which is not work worth doing on a poll for a panel nobody is looking at.
+  if (state.drawer?.type === 'inventory') {
+    try { state.inventory = await api('/api/inventory'); } catch { /* the panel says so itself */ }
+  }
   Office.update(officeData());
   if (passive && typingNow()) return;
   render();
@@ -431,8 +488,16 @@ const buildLegend = () => {
 document.addEventListener('click', async (e) => {
   const chip = e.target.closest('[data-room]');
   if (chip) { openDrawer('room', chip.dataset.room); return; }
+  const invtab = e.target.closest('[data-invtab]');
+  if (invtab) { state.inventoryTab = invtab.dataset.invtab; render(); return; }
   const open = e.target.closest('[data-open]');
-  if (open) { openDrawer(open.dataset.open); return; }
+  if (open) {
+    openDrawer(open.dataset.open);
+    if (open.dataset.open === 'inventory' && !state.inventory) {
+      api('/api/inventory').then((inv) => { state.inventory = inv; render(); }).catch(() => {});
+    }
+    return;
+  }
   const person = e.target.closest('[data-person]');
   if (person) { openDrawer('person', person.dataset.person); return; }
   if (e.target.id === 'drawerclose') { state.drawer = null; render(); return; }
@@ -536,6 +601,28 @@ document.addEventListener('click', async (e) => {
 
 document.addEventListener('input', (e) => {
   if (e.target.id === 'chatbody' && state.drawer?.type === 'person') state.draft[state.drawer.id] = e.target.value;
+  if (e.target.id === 'invsearch') { state.inventoryQuery = e.target.value; render(); }
+});
+
+/**
+ * Theme toggle.
+ *
+ * The initial theme is applied inline in console.html before this module loads, so the
+ * page never paints the wrong ground first. This only handles the CHANGE.
+ *
+ * It reads the computed ground rather than the dataset, because with no explicit choice
+ * the root carries no data-theme at all and the OS preference decides — asking the
+ * element what it was told would return nothing on exactly the first click that matters.
+ */
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#theme-toggle')) return;
+  const root = document.documentElement;
+  const dark = root.dataset.theme
+    ? root.dataset.theme === 'dark'
+    : matchMedia('(prefers-color-scheme: dark)').matches;
+  const next = dark ? 'light' : 'dark';
+  root.dataset.theme = next;
+  try { localStorage.setItem('forge-theme', next); } catch { /* a private window still gets the toggle, just not the memory */ }
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && e.target.id === 'quickask') $('#quicksend').click();

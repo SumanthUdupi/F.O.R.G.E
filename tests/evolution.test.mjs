@@ -174,3 +174,36 @@ describe('the workspace profile grades itself', () => {
     assert.equal(profileWorkspace(ws).testCommand.grade, 'INFERENCE');
   });
 });
+
+describe('standing instructions can expire', () => {
+  test('an expired adaptation is lapsed, a dateless one is permanent, a future one is live', async () => {
+    const { isExpired } = await import('../scripts/learn.mjs');
+    assert.equal(isExpired({ change: 'x' }), false, 'no date means permanent — the right default');
+    assert.equal(isExpired({ change: 'x', expires: '2020-01-01' }), true);
+    assert.equal(isExpired({ change: 'x', expires: '2099-01-01' }), false);
+    assert.equal(isExpired({ change: 'x', expires: 'not a date' }), false, 'an unparseable date must not silently lapse an instruction');
+  });
+
+  test('an expired instruction is KEPT in the overlay but never reaches an agent', async () => {
+    const { applyProposal, loadOverlay, briefing } = await import('../scripts/learn.mjs');
+    const { load } = await import('../scripts/core.mjs');
+    const fsx = await import('node:fs');
+    const osx = await import('node:os');
+    const pathx = await import('node:path');
+    const d = fsx.mkdtempSync(pathx.join(osx.tmpdir(), 'forge-exp-'));
+
+    applyProposal({ id: 'I1', kind: 'instruction', target: '.forge/overlay.yaml', change: 'live rule', observation: 'o', grade: 'UNKNOWN' }, d);
+    const first = fsx.readFileSync(pathx.join(d, '.forge', 'overlay.yaml'), 'utf8');
+    fsx.writeFileSync(pathx.join(d, '.forge', 'overlay.yaml'), `${first}  - id: I2\n    kind: instruction\n    change: "lapsed rule"\n    observation: "o"\n    grade: UNKNOWN\n    expires: 2020-01-01\n`);
+
+    // Kept in the record — deleting it would make a past decision unexplainable.
+    assert.equal((loadOverlay(d).adaptations || []).length, 2);
+
+    // And absent from what an agent is told, because the header says "IN FORCE HERE".
+    // briefing(org, cwd) — org first. Passing the directory alone silently briefed THIS
+    // repo's own workspace, which is a test that would have passed for the wrong reason.
+    const text = briefing(load(), d) || '';
+    assert.ok(text.includes('live rule'), 'the live instruction did not reach the briefing');
+    assert.ok(!text.includes('lapsed rule'), 'a lapsed instruction was injected under a header claiming it is in force');
+  });
+});

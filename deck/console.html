@@ -14,8 +14,10 @@
     <button class="hudpill" id="hud-needs" data-open="reception" title="Approvals and questions waiting on you">·</button>
     <button class="hudpill" id="hud-mail" data-open="reception" title="Messages in flight">·</button>
     <button class="hudpill" id="hud-live" data-open="mission" title="Mission control — every live session and what the organization is doing">·</button>
+    <button class="hudpill" id="hud-inventory" data-open="inventory" title="Everything that exists: agents, skills, connectors, divisions">inventory</button>
     <span class="spacer"></span>
     <span class="hudstat" id="live">connecting…</span>
+    <button class="hudpill themetoggle" id="theme-toggle" title="Switch between the paper ground and the dark one" aria-label="Switch theme">◐</button>
   </header>
 
   <main class="floorwrap">
@@ -28,6 +30,25 @@
     <div id="drawerbody"></div>
   </aside>
 </div>
+<script>
+  /*
+   * Theme, applied before the module loads.
+   *
+   * Inline and synchronous on purpose: if this waited for console.js, the page would paint
+   * the light ground first and then repaint dark — the flash that makes a dark mode feel
+   * bolted on. Reading one localStorage key is cheap enough to do before first paint.
+   *
+   * Every access is wrapped: a private window, cleared site data, or a browser set to block
+   * storage all throw here rather than returning null, and a theme preference is never worth
+   * a blank page.
+   */
+  try {
+    const saved = localStorage.getItem('forge-theme');
+    if (saved === 'dark' || saved === 'light') document.documentElement.dataset.theme = saved;
+    // No saved choice: stamp nothing and let prefers-color-scheme decide. Stamping the
+    // detected value here would freeze it, so a later OS change would stop being followed.
+  } catch (e) { /* storage unavailable — the OS preference still applies */ }
+</script>
 <script>
   window.addEventListener('unhandledrejection', (e) => {
     window.dispatchEvent(new ErrorEvent('error', { message: String(e.reason && e.reason.message || e.reason) }));

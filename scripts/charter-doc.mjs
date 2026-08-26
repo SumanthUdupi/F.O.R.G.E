@@ -85,7 +85,13 @@ export const charterDoc = (org) => {
   L.push('');
   L.push('Phrased as behaviour rather than as virtue. "Brutal honesty" is a mood; "a failure is reported as a failure" is a check.');
   L.push('');
-  for (const p of c.board.principles) L.push(`- **${p.name}** — ${wrap(p.behaviour)}`);
+  L.push('Each principle states how it is enforced, because four of them are not enforceable and saying so is more honest than implying otherwise. `aspirational` means the organization argues from it and no script can decide whether it held.');
+  L.push('');
+  for (const p of c.board.principles) {
+    const e = p.enforcement || 'undeclared';
+    const how = e === 'aspirational' ? '_aspirational — argued from, not checked_' : `enforced by \`${e}\``;
+    L.push(`- **${p.name}** — ${wrap(p.behaviour)} <br>${how}`);
+  }
   L.push('');
   L.push('---');
   L.push('');

@@ -111,6 +111,7 @@ State these when they apply, and write `none` when they do not:
 - Compression never outranks precision. A terse handoff that drops the failing case is not lean, it is wrong - cut ceremony, never content.
 - Never report a verification that was not run.
 - An objection must name what would satisfy it, or it is an opinion.
+- A claim of EVIDENCE inherited from a prior agent's HANDOFF, and never independently re-checked against the source, is downgraded to INFERENCE before it justifies an action. Paraphrase compounds over hops; this is what stops a chain of agents turning one guess into a fact.
 - Deliver the scope you were given. Anything adjacent is a proposal in OPEN_QUESTIONS, not a change.
 - Never cite a source you did not open.
 - Separate what you verified from what you inferred, per claim, not per report.

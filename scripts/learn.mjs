@@ -188,6 +188,35 @@ export const propose = (org, { rows, profile }) => {
   const out = [];
   const touched = new Set();
 
+  const totalObs = Object.values(memory).reduce((n, m) => n + m.n, 0) || 1;
+
+  /**
+   * How much does approving this actually change?
+   *
+   * Five proposals used to arrive with equal weight and a sentence each, read in the order
+   * the code generated them. That order is an artefact of this function, not of importance —
+   * so a de-preference affecting a third of all campaigns could sit below a profile note
+   * about indentation and get the same three seconds of attention.
+   *
+   * `impactScore` is DERIVED, never asserted: the share of observed work the proposal's
+   * subject actually carries, weighted by how structural the change is. `reversibility` is
+   * stated alongside it because the two together are the decision — a high-impact
+   * instantly-undoable change is an easy yes, and neither fact is visible in the change text.
+   */
+  const score = (p) => {
+    const share = p.agent && memory[p.agent] ? memory[p.agent].n / totalObs : 0;
+    const weight = { routing: 1, instruction: 0.7, talent: 0.6, profile: 0.4 }[p.kind] ?? 0.5;
+    const value = Number((share * weight).toFixed(4));
+    return {
+      impact: value >= 0.15 ? 'high' : value >= 0.05 ? 'medium' : 'low',
+      impactScore: value,
+      affectsShare: Number((share * 100).toFixed(1)),
+      // A real property of this design, not reassurance: every adaptation is an entry in
+      // .forge/overlay.yaml, and deleting the entry withdraws it completely.
+      reversibility: 'instant — delete the overlay entry to withdraw it',
+    };
+  };
+
   const add = (p) => {
     if (out.length >= CAP.proposals) return;
     if (p.agent) {
@@ -195,10 +224,10 @@ export const propose = (org, { rows, profile }) => {
       touched.add(p.agent);
     }
     if (isForbidden(p.target)) {
-      out.push({ ...p, id: `P${out.length + 1}`, refused: `${p.target} is outside what evolution may write` });
+      out.push({ ...p, ...score(p), id: `P${out.length + 1}`, refused: `${p.target} is outside what evolution may write` });
       return;
     }
-    out.push({ ...p, id: `P${out.length + 1}` });
+    out.push({ ...p, ...score(p), id: `P${out.length + 1}` });
   };
 
   // 1. Repeated correction of the same agent is a standing instruction the org has not
@@ -309,6 +338,13 @@ export const applyProposal = (proposal, cwd = process.cwd()) => {
     `    change: ${JSON.stringify(proposal.change)}`,
     `    observation: ${JSON.stringify(proposal.observation)}`,
     `    grade: ${proposal.grade}`,
+    // An instruction with a date on it is a different promise from one without. "always
+    // verify schema migrations" should outlive the campaign that prompted it; "the auth
+    // rewrite is in flight, do not touch those files" should not, and an overlay full of
+    // stale instructions from finished work is how a workspace profile becomes noise nobody
+    // reads. Absent means permanent, which is the right default.
+    proposal.expires ? `    expires: ${proposal.expires}` : null,
+    proposal.appliesTo ? `    applies_to: ${proposal.appliesTo}` : null,
     ...(proposal.body || []).map((b, i) => (i === 0 ? `    detail: ${JSON.stringify(b)}` : `    detail_${i + 1}: ${JSON.stringify(b)}`)),
   ]
     .filter(Boolean)
@@ -323,6 +359,20 @@ export const applyProposal = (proposal, cwd = process.cwd()) => {
 };
 
 /** Read the workspace overlay, if the Principal has approved anything here. */
+/**
+ * Is this adaptation still in force?
+ *
+ * Expiry is checked at READ time, never by deleting the entry. The record of what was in
+ * force and when is part of the audit trail — an expired instruction that vanished would make
+ * a past decision unexplainable ("why did it do that in March?"), which is exactly what the
+ * append-only discipline exists to prevent everywhere else.
+ */
+export const isExpired = (adaptation, now = new Date()) => {
+  if (!adaptation || !adaptation.expires) return false;
+  const d = new Date(adaptation.expires);
+  return Number.isFinite(d.getTime()) && d < now;
+};
+
 export const loadOverlay = (cwd = process.cwd()) => {
   const p = path.join(cwd, '.forge', 'overlay.yaml');
   if (!fs.existsSync(p)) return { adaptations: [] };
@@ -367,10 +417,17 @@ export const briefing = (org, cwd = process.cwd()) => {
     lines.push(`WORKSPACE  ${known.map(([k, v]) => `${k}=${Array.isArray(v.value) ? v.value.join('/') : v.value} (${v.grade})`).join(' · ')}`);
   }
 
-  const adaptations = overlay.adaptations || [];
+  // Expired adaptations are kept in the overlay (the record of what was in force and when is
+  // part of the audit trail) and MUST NOT reach an agent. The header says "IN FORCE HERE";
+  // injecting a lapsed instruction under it would make that sentence false, and the agent has
+  // no way to tell the difference.
+  const adaptations = (overlay.adaptations || []).filter((a) => !isExpired(a));
   if (adaptations.length) {
     lines.push('IN FORCE HERE, approved by the Principal — these outrank your general instinct:');
-    for (const a of adaptations) lines.push(`  - ${a.change}${a.detail ? ` (${a.detail})` : ''}`);
+    for (const a of adaptations) {
+      const scope = a.applies_to ? ` [${a.applies_to} only]` : '';
+      lines.push(`  - ${a.change}${scope}${a.detail ? ` (${a.detail})` : ''}`);
+    }
   }
 
   // Only agents far enough from the prior to change a route are worth the tokens.

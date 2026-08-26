@@ -11,7 +11,20 @@
  * Green/amber/red carry state only and never decorate. The hex mark stays cyan — it is
  * the one thread back to the machine room.
  *
- * Single-theme by design: the page paints its own ground and commits to it.
+ * TWO THEMES, ONE SET OF ROLES.
+ *
+ * This file used to say "single-theme by design: the page paints its own ground and commits
+ * to it". The commitment was right; the assumption under it was not — that someone reading a
+ * governance surface at 11pm wants a bright page. The fix is not a second design, it is the
+ * SAME design in two grounds. Every token below is a semantic role (`--paper` is "the
+ * ground", `--copper` is "the one action colour"), and the dark blocks redefine the roles
+ * without renaming or reassigning any of them. Nothing outside those blocks knows a theme
+ * exists, which is why this was a token edit and not a rewrite.
+ *
+ * Three states, deliberately: an explicit choice stamps `data-theme` on the root, and the
+ * default follows the operating system. The `:not([data-theme="light"])` guard is what lets
+ * an explicit LIGHT choice survive a dark OS — without it the media query silently wins and
+ * the toggle only works in one direction, which is the classic version of this bug.
  */
 
 :root {
@@ -39,6 +52,65 @@
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --r: 14px;
   --ease: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/*
+ * DARK — the same roles, re-grounded.
+ *
+ * Not "the light palette inverted": inverting warm paper gives a muddy brown nobody wants to
+ * read. The ground is a cool near-black with a trace of the same warmth, copper is lifted
+ * (a mid-tone action colour disappears against dark), and every state colour is lightened
+ * just enough to hold contrast against --card rather than against white.
+ *
+ * The soft variants get DARKER, not lighter — they are backgrounds behind their own state
+ * colour, so on a dark ground they must recede, which is the opposite direction from light.
+ * Getting that backwards is what makes most retrofitted dark modes glow.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #14161a;
+    --card: #1c1f25;
+    --card-2: #23272e;
+    --ink: #e9e4da;
+    --ink-2: #a9a294;
+    --faint: #756e60;
+    --line: #2c313a;
+    --line-2: #3a404b;
+
+    --copper: #d98a4e;
+    --copper-ink: #eda869;
+    --copper-soft: #33251a;
+    --good: #5fb98a;
+    --good-soft: #1b2b23;
+    --warn: #d3a44a;
+    --warn-soft: #2e2515;
+    --bad: #e0706b;
+    --bad-soft: #2e1c1c;
+    --mark: #35b4c9;
+  }
+}
+
+/* The explicit choice, in both directions. Listed last so a stamped root always wins. */
+:root[data-theme="dark"] {
+  --paper: #14161a;
+  --card: #1c1f25;
+  --card-2: #23272e;
+  --ink: #e9e4da;
+  --ink-2: #a9a294;
+  --faint: #756e60;
+  --line: #2c313a;
+  --line-2: #3a404b;
+
+  --copper: #d98a4e;
+  --copper-ink: #eda869;
+  --copper-soft: #33251a;
+  --good: #5fb98a;
+  --good-soft: #1b2b23;
+  --warn: #d3a44a;
+  --warn-soft: #2e2515;
+  --bad: #e0706b;
+  --bad-soft: #2e1c1c;
+  --mark: #35b4c9;
 }
 
 * { box-sizing: border-box; }
@@ -314,7 +386,19 @@ details.deptrowwrap[open] > summary .nm { color: var(--copper-ink); }
    it or the HUD lands in a phantom 224px column — which is exactly how it shipped in the
    first capture. Specificity, not !important. */
 #app.officeapp { display: flex; flex-direction: column; height: 100%; grid-template-columns: none; }
-.hud { display: flex; align-items: center; gap: 10px; padding: 10px 18px; background: var(--card); border-bottom: 1px solid var(--line); }
+/*
+ * The HUD sits ABOVE the drawer (z 6 vs the drawer's 5).
+ *
+ * Found by driving the real page rather than by reading it: the drawer is `position: fixed`
+ * full-height on the right, so with a panel open it covered the right end of the HUD and the
+ * theme toggle became unclickable — Playwright reported the drawer "intercepts pointer
+ * events" while every property assertion said the button was visible and enabled. It was
+ * visible. It was also underneath something.
+ *
+ * The HUD is chrome and the drawer is content, so chrome on top is also the right answer
+ * independently of the bug.
+ */
+.hud { position: relative; z-index: 6; display: flex; align-items: center; gap: 10px; padding: 10px 18px; background: var(--card); border-bottom: 1px solid var(--line); }
 .hud .brand { padding: 0; }
 .hudpill { appearance: none; border: 1px solid var(--line); background: var(--card-2); border-radius: 99px; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-2); padding: 6px 14px; cursor: pointer; }
 .hudpill:hover { border-color: var(--copper); color: var(--copper-ink); }
@@ -326,6 +410,7 @@ details.deptrowwrap[open] > summary .nm { color: var(--copper-ink); }
 .floorwrap .officelegend { max-width: 1400px; margin: 10px auto 0; padding: 0; }
 
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 92vw); background: var(--card); border-left: 1px solid var(--line); box-shadow: -12px 0 40px -22px rgba(43,33,23,.35); transform: translateX(102%); transition: transform .22s var(--ease); overflow-y: auto; padding: 20px 22px 40px; z-index: 5; }
+/* Below the HUD, so an open panel never swallows the controls in the bar above it. */
 .drawer[aria-hidden="false"] { transform: none; }
 .drawerclose { position: absolute; top: 10px; right: 12px; appearance: none; border: 0; background: var(--card-2); width: 32px; height: 32px; border-radius: 50%; font-size: 18px; color: var(--ink-2); cursor: pointer; }
 .dhead { display: flex; gap: 12px; align-items: center; margin: 4px 0 14px; }
@@ -376,3 +461,41 @@ details.deptrowwrap[open] > summary .nm { color: var(--copper-ink); }
   .stage { padding: 22px 18px 60px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* ── Inventory ──────────────────────────────────────────────────────────────────────
+ *
+ * A dense list, deliberately. Every other drawer shows one thing well; this one exists
+ * so several can be compared at a glance, and comparison needs rows close together.
+ * Same tokens as everywhere else, so it themes for free.
+ */
+.invtabs { display: flex; gap: 4px; margin: 10px 0 8px; flex-wrap: wrap; }
+.invtab {
+  border: 1px solid var(--line); background: var(--card-2); color: var(--ink-2);
+  border-radius: 999px; padding: 5px 12px; font: 500 12px/1 var(--sans); cursor: pointer;
+  transition: background 0.12s var(--ease), color 0.12s var(--ease);
+}
+.invtab:hover { background: var(--copper-soft); color: var(--copper-ink); }
+.invtab[aria-current="true"] { background: var(--copper); border-color: var(--copper); color: #fff; }
+
+.invlist { margin-top: 10px; display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow-y: auto; }
+.invrow {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  padding: 8px 10px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--ink); font: 13px/1.35 var(--sans); cursor: pointer;
+}
+.invrow.static { cursor: default; }
+.invrow:not(.static):hover { background: var(--card-2); }
+.invname { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.invname small { color: var(--faint); font-size: 11px; margin-top: 2px; }
+.invmeta { flex: 0 0 auto; color: var(--ink-2); font: 11px/1 var(--mono); text-align: right; }
+.invdim { color: var(--faint); font-style: italic; }
+.invwarn { color: var(--bad); }
+.invnever { margin: 0 0 8px 10px; font-size: 11px; color: var(--faint); }
+
+/* Presence, not decoration: filled = measured, hollow = never selected, red = below floor. */
+.invdot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+.invdot.off { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); }
+.invdot.bad { background: var(--bad); }
+
+/* The toggle is a control, not a feature — it sits quietly at the end of the HUD. */
+.themetoggle { font-size: 14px; line-height: 1; padding: 4px 9px; }

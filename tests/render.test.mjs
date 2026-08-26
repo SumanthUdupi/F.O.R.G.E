@@ -182,3 +182,45 @@ describe('the launch page cannot drift from the organization it sells', () => {
     }
   });
 });
+
+/**
+ * The manager/roster seam.
+ *
+ * docs/EXTENDING.md promises that adding a specialist is enough because "the manager already
+ * knows, by construction". That promise was false for the whole life of the repo — no
+ * manager prompt named a single specialist — and it was found by grepping for one rather
+ * than by reading the doc. This is the test that keeps the promise true.
+ */
+describe('a manager knows its own division', () => {
+  test('every manager prompt lists every specialist in its division, by name', () => {
+    for (const m of org.all.filter((a) => a.role === 'manager')) {
+      const body = fs.readFileSync(path.join(paths.agents, `${m.name}.md`), 'utf8');
+      const team = org.all.filter((a) => a.role === 'specialist' && a.division === m.division);
+      for (const s of team) {
+        assert.ok(body.includes(s.name), `${m.name} does not name ${s.name}, who is in its division — the manager is routing blind`);
+      }
+    }
+  });
+
+  test('a manager lists nobody from another division — that would be a portfolio breach on paper', () => {
+    for (const m of org.all.filter((a) => a.role === 'manager')) {
+      const body = fs.readFileSync(path.join(paths.agents, `${m.name}.md`), 'utf8');
+      const section = body.split('### Your division')[1];
+      if (!section) continue;
+      const table = section.split('\n\n')[3] || '';
+      for (const other of org.all.filter((a) => a.role === 'specialist' && a.division !== m.division)) {
+        assert.ok(!table.includes(`\`${other.name}\``), `${m.name}'s team table lists ${other.name}, who belongs to ${other.division}`);
+      }
+    }
+  });
+
+  test('the listed capabilities match the roster exactly — a stale list is worse than none', () => {
+    const m = org.all.find((a) => a.role === 'manager' && (org.byDivision.get(a.division) || []).some((x) => x.role === 'specialist'));
+    const body = fs.readFileSync(path.join(paths.agents, `${m.name}.md`), 'utf8');
+    for (const s of org.all.filter((a) => a.role === 'specialist' && a.division === m.division)) {
+      for (const cap of s.capabilities || []) {
+        assert.ok(body.includes(cap), `${m.name} lists ${s.name} without capability "${cap}"`);
+      }
+    }
+  });
+});

@@ -47,3 +47,18 @@ jobs:
       # The glob is the form all three agree on.
       - name: tests
         run: node --test tests/*.test.mjs
+
+      # Routing is deterministic, so a change to roster/routing/contracts either preserves
+      # these answers or it does not. This is the step that catches "I added a capability
+      # family and production release stopped escalating" before a release, not during one.
+      - name: golden routing replay
+        run: node scripts/forge.mjs bench-routing
+
+      # The parser under every file the organization loads is hand-rolled and cannot be
+      # swapped for a library (zero dependencies is load-bearing), so it is fuzzed instead.
+      # The failure this hunts is a SILENT WRONG PARSE — throwing is the parser working.
+      - name: fuzz the yaml parser
+        run: node scripts/yaml-fuzz.mjs --iterations 4000 --seed 42
+
+      - name: the system reference is in sync with the system it describes
+        run: node scripts/forge.mjs explain --all > docs/SYSTEM-REFERENCE.md && git diff --exit-code

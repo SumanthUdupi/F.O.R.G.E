@@ -23,6 +23,25 @@ import { workspaceDir } from './core.mjs';
 
 export const OUTCOMES = ['ok', 'partial', 'fail', 'blocked'];
 
+/**
+ * The ledger row format version.
+ *
+ * v1 rows carry no `v` at all and are read as v1 — every field this version added is
+ * optional and absent means null, so an old ledger keeps deriving byte-identical memory.
+ * The version exists so that a future format change has somewhere to branch, rather than
+ * needing to guess an old row's shape from which keys happen to be present.
+ */
+export const LEDGER_VERSION = 2;
+
+/**
+ * A row is either an OBSERVATION (an agent did something) or a SPOTCHECK (a later pass
+ * re-checked a claim an observation made). They live in the same append-only file because
+ * they are the same kind of fact — something happened, at a time, attributable — but they
+ * are counted differently: a spotcheck must never move an agent's reliability, or verifying
+ * work would be indistinguishable from doing it.
+ */
+export const KINDS = ['observation', 'spotcheck'];
+
 const ensure = (dir) => {
   fs.mkdirSync(dir, { recursive: true });
   return dir;
@@ -53,21 +72,59 @@ export const observe = (event, cwd = process.cwd()) => {
   if (missing.length) throw new Error(`observation is missing ${missing.join(', ')} — an unattributed row teaches nothing`);
   if (!OUTCOMES.includes(event.outcome)) throw new Error(`outcome must be one of ${OUTCOMES.join(', ')}`);
 
+  if (event.kind && !KINDS.includes(event.kind)) throw new Error(`kind must be one of ${KINDS.join(', ')}`);
+
   const row = {
+    v: LEDGER_VERSION,
     at: event.at || new Date().toISOString(),
+    kind: event.kind || 'observation',
     agent: event.agent,
     capability: event.capability,
     outcome: event.outcome,
     campaign: event.campaign || null,
+    task: event.task || null,
     tokens: Number(event.tokens || 0),
     correction: event.correction || null,
     note: event.note || null,
+    // The claim's own grade, so a spot-check has something to disagree WITH. Without this
+    // the ledger records that work happened and never records what was asserted about it,
+    // which is why RULE-007 could only ever check that a grade field existed somewhere.
+    grade: event.grade || null,
+    // file:line references, kept as data. This is what makes a claim mechanically
+    // re-checkable — prose saying "I changed the handler" is not.
+    artifacts: event.artifacts && event.artifacts.length ? [].concat(event.artifacts) : null,
+    // The verbatim output block, stored so the NEXT agent can be handed the original rather
+    // than a paraphrase of it. Storage is a few hundred bytes on disk; it is never re-sent
+    // to a model unless `forge handoff` retrieves it.
+    raw_output: event.raw_output || null,
+    // Why this dispatch/escalation happened. Diagnostic only — routing never reads it.
+    trace: event.trace || null,
+    // Which standing hypothesis this outcome tests, so `forge learn` can report which
+    // beliefs the evidence confirmed and which it refuted.
+    hypothesis: event.hypothesis || null,
   };
   const f = files(cwd);
   ensure(f.dir);
   fs.appendFileSync(f.ledger, `${JSON.stringify(row)}\n`);
+  // The on-disk cache keys off size+mtime and will invalidate itself; the in-process memo
+  // cannot see the write it just made within the same millisecond, so drop it explicitly.
+  invalidateMemory(cwd);
   return row;
 };
+
+/**
+ * Above this, a synchronous read is long enough to be felt by another request.
+ *
+ * Below it, sync is genuinely better: simpler, no async colouring of every caller, and the
+ * read completes in well under a millisecond. The Console is a long-lived process serving
+ * several registered workspaces, so two concurrent requests can already contend for the same
+ * event loop — which is the reason the async path exists at all, before ledger size is a
+ * problem on any single workspace.
+ *
+ * 1MB is roughly 4000 ledger rows. Everything measured so far is three orders of magnitude
+ * under that, so this is a guard rail, not a live concern.
+ */
+export const ASYNC_READ_THRESHOLD = 1024 * 1024;
 
 export const readLedger = (cwd = process.cwd()) => {
   const f = files(cwd);
@@ -86,6 +143,29 @@ export const readLedger = (cwd = process.cwd()) => {
     });
 };
 
+/**
+ * The same read, yielding the event loop for a large file.
+ *
+ * Small files stay synchronous — identical behaviour, no added complexity, and the common
+ * case never pays for a case it does not have. Past the threshold the read is awaited, which
+ * hands the loop back so a second request is not stuck behind the first one's I/O.
+ *
+ * Used by the Console, which is the only long-lived process here. The CLI exits after one
+ * command and has nothing to block.
+ */
+export const readLedgerAsync = async (cwd = process.cwd()) => {
+  const f = files(cwd);
+  if (!fs.existsSync(f.ledger)) return [];
+  let size = 0;
+  try { size = fs.statSync(f.ledger).size; } catch { return []; }
+  if (size < ASYNC_READ_THRESHOLD) return readLedger(cwd);
+
+  const body = await fs.promises.readFile(f.ledger, 'utf8');
+  return body.split('\n').filter(Boolean).map((l, i) => {
+    try { return JSON.parse(l); } catch { return { at: null, agent: null, capability: null, outcome: null, corrupt: i + 1 }; }
+  });
+};
+
 const WEIGHT = { ok: 1, partial: 0.5, fail: 0, blocked: null }; // blocked is not the agent's fault
 
 /**
@@ -98,8 +178,22 @@ const WEIGHT = { ok: 1, partial: 0.5, fail: 0, blocked: null }; // blocked is no
 export const derive = (rows, { prior = 0.7, priorStrength = 4 } = {}) => {
   const memory = {};
   const corrections = [];
+  const capability = {};
+  const hypotheses = {};
   for (const r of rows) {
     if (r.corrupt || !r.agent) continue;
+
+    // A spotcheck is a verdict ON an observation, never an observation itself. Counting it
+    // into reliability would mean an agent whose claims are re-checked often looks busier
+    // than one nobody audits, which inverts the incentive this whole mechanism exists for.
+    if (r.kind === 'spotcheck') {
+      const m = (memory[r.agent] ??= { n: 0, score: 0, tokens: 0, byClass: {}, corrections: 0 });
+      const e = (m.evidence ??= { checked: 0, confirmed: 0 });
+      e.checked += 1;
+      if (r.outcome === 'ok') e.confirmed += 1;
+      continue;
+    }
+
     const m = (memory[r.agent] ??= { n: 0, score: 0, tokens: 0, byClass: {}, corrections: 0 });
     const w = WEIGHT[r.outcome];
     m.tokens += r.tokens || 0;
@@ -107,23 +201,183 @@ export const derive = (rows, { prior = 0.7, priorStrength = 4 } = {}) => {
       m.corrections += 1;
       corrections.push({ agent: r.agent, capability: r.capability, text: r.correction, at: r.at });
     }
+    if (r.hypothesis) {
+      const h = (hypotheses[r.hypothesis] ??= { n: 0, supported: 0, refuted: 0 });
+      h.n += 1;
+      if (r.outcome === 'ok') h.supported += 1;
+      if (r.outcome === 'fail') h.refuted += 1;
+    }
     if (w === null || w === undefined) continue;
     m.n += 1;
     m.score += w;
+    (m.history ??= []).push(w);
     const c = (m.byClass[r.capability] ??= { n: 0, score: 0, consecutiveFailures: 0 });
     c.n += 1;
     c.score += w;
     c.consecutiveFailures = r.outcome === 'fail' ? c.consecutiveFailures + 1 : 0;
+
+    // Cost per capability, across every agent that holds it. This is what separates
+    // "this capability is intrinsically hard" from "this capability is staffed expensively"
+    // — two very different problems that a per-agent cost figure cannot tell apart.
+    const cc = (capability[r.capability] ??= { tokens: 0, n: 0, successes: 0, agents: {} });
+    cc.tokens += r.tokens || 0;
+    cc.n += 1;
+    if (w === 1) cc.successes += 1;
+    cc.agents[r.agent] = (cc.agents[r.agent] || 0) + 1;
   }
+
   for (const m of Object.values(memory)) {
     m.reliability = Number(((m.score + prior * priorStrength) / (m.n + priorStrength)).toFixed(4));
     m.costPerTask = m.n ? Math.round(m.tokens / m.n) : 0;
     for (const c of Object.values(m.byClass)) {
       c.rate = Number(((c.score + prior * priorStrength) / (c.n + priorStrength)).toFixed(4));
     }
+    if (m.evidence) {
+      // Smoothed against the same neutral prior as reliability, and for the same reason:
+      // two confirmed claims is not a track record of honesty.
+      m.evidence.accuracy = Number(
+        ((m.evidence.confirmed + prior * priorStrength) / (m.evidence.checked + priorStrength)).toFixed(4),
+      );
+    }
+    // DOWNTREND — an agent falling below 0.55 already triggers a de-preference proposal, but
+    // by then the damage is done. This flags the slope while the level is still fine, which
+    // is the whole difference between a warning and a post-mortem. It needs 10 observations
+    // in each half before it will say anything, so a bad first week cannot read as a trend.
+    const h = m.history || [];
+    if (h.length >= 20) {
+      const first = h.slice(0, 10).reduce((a, b) => a + b, 0) / 10;
+      const last = h.slice(-10).reduce((a, b) => a + b, 0) / 10;
+      m.trend = { first, last, delta: Number((last - first).toFixed(4)) };
+      if (first - last > 0.15) m.trend.downtrend = true;
+    }
+    delete m.history; // an accumulator, not a fact about the agent
   }
-  return { memory, corrections, observations: rows.filter((r) => !r.corrupt && r.agent).length };
+
+  for (const c of Object.values(capability)) {
+    c.costPerTask = c.n ? Math.round(c.tokens / c.n) : 0;
+    c.costPerSuccess = c.successes ? Math.round(c.tokens / c.successes) : null;
+    c.staffedBy = Object.keys(c.agents).length;
+  }
+
+  return {
+    memory,
+    corrections,
+    capability,
+    hypotheses,
+    observations: rows.filter((r) => !r.corrupt && r.agent && r.kind !== 'spotcheck').length,
+  };
 };
+
+/**
+ * The derivation, memoised — the fix for the hot path.
+ *
+ * `derive(readLedger())` was called on every CLI invocation, including the per-turn routing
+ * path, and it reads and folds the entire ledger every time. At 126 rows that is free; the
+ * design is meant to survive 100k, and it would not.
+ *
+ * Invalidated by size + mtime — a `stat`, not a re-read, so the common case (ledger
+ * unchanged since the last command) costs one stat and one small JSON read instead of a full
+ * parse-and-fold. TWO layers, because the two callers have opposite lifetimes:
+ *
+ *   in-process Map   the Console is one long-lived process serving many clicks; it should
+ *                    not touch disk at all between them.
+ *   .memory-cache.json  the CLI exits after every command and would lose an in-process cache
+ *                    entirely, so the memo has to outlive the process.
+ *
+ * The ledger remains the single source of truth. This cache is provably safe to delete at
+ * any moment — deleting it forces the next call to recompute, which is exactly the same
+ * reversibility property memory.json already has. It is never read as authority, only as a
+ * shortcut whose key proves it is current.
+ */
+const memoryMemo = new Map();
+
+const signature = (p) => {
+  try {
+    const st = fs.statSync(p);
+    return `${st.size}:${st.mtimeMs}`;
+  } catch {
+    return 'empty';
+  }
+};
+
+export const derivedMemory = (cwd = process.cwd(), { force = false } = {}) => {
+  const f = files(cwd);
+  const sig = signature(f.ledger);
+  const key = path.resolve(cwd);
+
+  if (!force) {
+    const hot = memoryMemo.get(key);
+    if (hot && hot.sig === sig) return hot.derived;
+
+    try {
+      const disk = JSON.parse(fs.readFileSync(path.join(f.dir, '.memory-cache.json'), 'utf8'));
+      if (disk && disk.sig === sig && disk.derived) {
+        memoryMemo.set(key, { sig, derived: disk.derived });
+        return disk.derived;
+      }
+    } catch {
+      /* a missing or corrupt cache is not an error — it is a cache miss */
+    }
+  }
+
+  const derived = derive(readLedger(cwd));
+  memoryMemo.set(key, { sig, derived });
+  try {
+    ensure(f.dir);
+    fs.writeFileSync(path.join(f.dir, '.memory-cache.json'), `${JSON.stringify({ sig, derived })}\n`);
+  } catch {
+    /* an unwritable cache must never break the command that tried to warm it */
+  }
+  return derived;
+};
+
+/** Drop the memo for one workspace (or all of them). Used by tests and by `observe`. */
+export const invalidateMemory = (cwd) => {
+  if (cwd === undefined) memoryMemo.clear();
+  else memoryMemo.delete(path.resolve(cwd));
+};
+
+/**
+ * The flat machine-to-machine handoff line.
+ *
+ * `status=SUCCESS|evidence=EVIDENCE|artifact=src/api/users.ts:42|handoff=none`
+ *
+ * This is the small, real version of what the TOON wire-protocol idea was reaching for, and
+ * it needs no library: split on `|`, split on the first `=`, done. It is cheaper than the
+ * markdown contract block and — more importantly — unambiguous, because there is nowhere for
+ * a nested sentence to hide.
+ *
+ * Scope is deliberately narrow. The rich markdown contract stays for anything a human reads,
+ * including the board minutes. Machine hops get this. Using the flat format for human-facing
+ * output would be optimising the wrong cost.
+ */
+export const HANDOFF_KEYS = ['task', 'agent', 'capability', 'status', 'evidence', 'artifact', 'campaign'];
+
+export const flatHandoff = (row = {}) => {
+  const pairs = {
+    task: row.task || 'none',
+    agent: row.agent || 'unknown',
+    capability: row.capability || 'none',
+    status: { ok: 'SUCCESS', partial: 'PARTIAL', fail: 'FAILED', blocked: 'BLOCKED' }[row.outcome] || 'UNKNOWN',
+    evidence: row.grade || 'UNKNOWN',
+    artifact: (row.artifacts || []).join(',') || 'none',
+    campaign: row.campaign || 'none',
+  };
+  // A value containing the delimiter would silently split into two fields on the far side.
+  const safe = (v) => String(v).replace(/[|=\n]/g, ' ').trim();
+  return HANDOFF_KEYS.map((k) => `${k}=${safe(pairs[k])}`).join('|');
+};
+
+export const parseFlatHandoff = (line) =>
+  Object.fromEntries(
+    String(line || '')
+      .split('|')
+      .map((p) => {
+        const i = p.indexOf('=');
+        return i === -1 ? null : [p.slice(0, i), p.slice(i + 1)];
+      })
+      .filter(Boolean),
+  );
 
 export const loadMemory = (cwd = process.cwd()) => {
   const f = files(cwd);

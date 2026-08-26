@@ -24,6 +24,24 @@ score:
   cost_efficiency: 0.10
   availability: 0.05
 
+# Stage-specific weight on the CAPABILITY MATCH term only.
+#
+# The phases do not value the same thing. A wrong architectural call in `design` is paid for
+# through the entire campaign, so a sharper preference between qualified specialists is worth
+# it there. In `verify` any competent verifier finds the same failing test, so paying a
+# premium buys little and a flatter preference lets cost and availability decide.
+#
+# 1.0 is neutral. Above 1 sharpens, below 1 flattens. This can never route to an agent
+# lacking the capability — that check happens before scoring — so the worst a bad number here
+# can do is pick a slightly worse qualified agent.
+capability_weight:
+  frame: 1.0
+  design: 1.6
+  build: 1.2
+  verify: 0.7
+  release: 1.3
+  deliver: 0.8
+
 # Article 146. A specialist that has just failed this class of work is not the obvious
 # choice for the retry, whatever its lifetime average says.
 failure_penalty:
@@ -84,12 +102,29 @@ escalators:
     - one field
     - comment
   direct:
+    # Widened after the golden set caught "what does the chair do" routing as FOCUSED and
+    # convening a campaign for a lookup. The list had "what is" and "how does" and stopped
+    # there, so half of the ways a person actually asks a question paid full price.
+    #
+    # Widening this is safe by construction, not by luck: detectMode only lets `direct`
+    # survive when NOTHING else matched, so "what does X do, and add a rate limiter" still
+    # matches "add a" and escalates. The failure mode of a too-narrow list is a tax on every
+    # question; the failure mode of a too-wide one is nothing, because the guard catches it.
     - what is
+    - what does
+    - what are
     - where is
+    - which
+    - who is
+    - who owns
+    - why does
+    - why is
     - explain
     - how does
+    - how do i
     - show me
     - list the
+    - tell me
 
 # Rules. `when_any` fires the rule; `unless` suppresses it. Each rule names CAPABILITIES,
 # not agents -- the router picks the agent, so adding a specialist does not mean editing
@@ -100,6 +135,14 @@ rules:
     capabilities: [decompose]
     phase: frame
     why: Every campaign starts with a done-condition or it cannot be finished.
+  - id: R-CHECKLIST
+    # RULE 014. Fires on the shapes a multi-item request actually takes -- an enumerated
+    # list, an "also", a "make sure nothing is missed". Deliberately broad: a false positive
+    # costs one lean agent, and a false negative is the exact failure the rule exists for.
+    when_any: [also, additionally, as well, make sure, every item, nothing is missed, all of the following, checklist, remaining, each of]
+    capabilities: [checklist]
+    phase: deliver
+    why: A request with more than one item closes over a forgotten one unless something diffs asked against delivered.
   - id: R-PRIOR-ART
     when_any: [existing, already, again, similar, previously, why does, why is]
     capabilities: [research, recall]

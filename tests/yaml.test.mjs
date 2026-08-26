@@ -76,3 +76,33 @@ describe('it refuses rather than guesses', () => {
     }
   });
 });
+
+/**
+ * Property tests over generated input.
+ *
+ * The 17 hand-written cases above cover the shapes this repo's own files use. They cannot
+ * cover the space BETWEEN those shapes, which is where a hand-rolled parser breaks — and a
+ * misparse here runs every downstream check against the wrong organization, silently.
+ */
+describe('fuzzing: the parser may throw, and may parse, but must never invent', () => {
+  test('20000 mutations of the real registry files produce no fabricated structure', async () => {
+    const { fuzz } = await import('../scripts/yaml-fuzz.mjs');
+    const { paths } = await import('../scripts/core.mjs');
+    const fsx = await import('node:fs');
+    for (const p of [paths.roster, paths.routing, paths.contracts, paths.constitution]) {
+      const r = fuzz(fsx.readFileSync(p, 'utf8'), { iterations: 5000, seed: 42 });
+      assert.equal(
+        r.failures.length, 0,
+        `silent misparse in ${p}:\n${r.failures.slice(0, 3).map((f) => `  line ${f.line} "${f.mutation}" invented ${f.invented.join(', ')}`).join('\n')}`,
+      );
+      // A parser that never throws is not lenient, it is guessing. This asserts the fuzzer
+      // is actually reaching malformed input rather than making cosmetic edits.
+      assert.ok(r.tally.threw > r.iterations * 0.1, `only ${r.tally.threw} of ${r.iterations} mutations threw — the fuzzer is not producing malformed input`);
+    }
+  });
+
+  test('parsing is not stateful — every registry file reads identically twice', async () => {
+    const { stableOnValidInput } = await import('../scripts/yaml-fuzz.mjs');
+    assert.deepEqual(stableOnValidInput(), []);
+  });
+});

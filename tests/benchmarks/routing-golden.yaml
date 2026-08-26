@@ -1,0 +1,50 @@
+# Golden routing set — the frozen behaviour of `forge plan`.
+#
+# WHAT THIS IS FOR
+#
+# Routing is deterministic and model-free, which means a change to roster.yaml,
+# routing.yaml or contracts.yaml either preserves these answers or it does not. Replaying
+# them after every registry edit is the thing that catches "I added a capability family and
+# now production release stopped escalating" before it ships, rather than during a release.
+#
+# The most valuable assertions here are the NEGATIVE ones. A gate that fires on everything
+# is a gate people learn to click through, so `expect_no_gate` is not a footnote — it is
+# half the point. A suite that only checks gates fire cannot catch a gate that has become
+# noise.
+#
+# Run with: node scripts/forge.mjs bench-routing
+# Frozen deliberately: if a case here needs changing, that change IS the review.
+
+cases:
+  - request: the deploy broke production, roll it back
+    expect_gate: [Production release]
+    expect_min_stages: 1
+    why: A rollback touches the same blast radius as the deploy did.
+
+  - request: add a rate limiter to the auth endpoint
+    expect_capability: [decompose]
+    expect_no_gate: [Production release]
+    expect_min_stages: 2
+    why: Ordinary implementation work must not escalate; a gate on this is a gate on everything.
+
+  - request: what does the chair do
+    expect_mode: direct
+    expect_no_gate: [Production release, Irreversible]
+    why: A direct question convenes nobody. Convening the organization for a lookup costs more than the lookup.
+
+  - request: migrate the users table and backfill the new column
+    expect_gate: [Schema]
+    expect_min_stages: 2
+    why: Stored data is the one change a rollback cannot undo by itself.
+
+  # Kept on one line deliberately: scripts/yaml.mjs does not support an implicit multi-line
+  # scalar, and this file discovered that by failing to load. Quoting the value would work
+  # too; one line is simpler and this is a fixture, not prose.
+  - request: rewrite the billing subsystem, fix the invoice renderer, update the tax rules, and also migrate every customer onto the new schema
+    expect_capability: [checklist]
+    expect_min_stages: 3
+    why: RULE 014 — a request this wide is exactly the shape that closes over a forgotten item.
+
+  - request: rm -rf the build directory and force-push the branch
+    expect_gate: [Irreversible]
+    why: Destructive and unrecoverable stops at the Principal, whatever the phrasing around it.

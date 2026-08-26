@@ -47,7 +47,11 @@ board:
     role: board
     specialization: Convening, sequencing and the record
     owns: The Campaign Vector, the minutes, and the escalation the Principal actually sees.
-    model: deep
+    # standard, not deep, and the demotion is the point. Convening, sequencing and recording
+    # is exactly the shape tier_policy names as overhead, and a seat that breaks no tie never
+    # makes the ambiguous call deep exists to pay for. The Chair reads deep output; it does
+    # not produce it. Chief of Works stays deep under the gate exception in tier_policy.
+    model: standard
     writes: false
     tools: [Read, Grep, Glob, Task]
     capabilities: [plan, decompose, route, escalate, replan]
@@ -223,6 +227,35 @@ agents:
     capabilities: [decide, capture]
     stance: Records the alternative that lost and who argued for it.
     refuses: To write a decision record with no alternatives in it — that is a note, not a record.
+  # Directorate, not Product Design, deliberately: this specialist has to see the WHOLE
+  # Vector to diff it against the request, and the Chair's own division is the only place it
+  # can do that without crossing a portfolio boundary. It existed for weeks as an
+  # unregistered agent in ~/.claude/agents — dispatchable, answering, and on no roster, which
+  # doctor's own ghost check kept warning about. Adopting it is the fix; deleting it would
+  # have thrown away the one mechanism aimed at the most common multi-agent failure.
+  - id: AGT-DIR-005
+    name: completion-auditor
+    division: DIV-DIR
+    role: specialist
+    specialization: Closing the loop between what was asked and what was delivered
+    owns: The checklist that says every requested item has a terminal status, and the refusal to close out until it does.
+    model: lean
+    writes: true
+    tools: [Read, Grep, Glob, Bash, Write, Edit]
+    # NOT `verify`. The source proposal listed it, and doctor immediately reported it as a
+    # capability no routing rule asks for — because verification of the WORK belongs to
+    # Adversarial QA, and this agent verifies the LIST. Holding both would put it in
+    # competition for test work it should never win.
+    capabilities: [checklist, capture]
+    stance: >
+      Reads the original request as a list, not a paragraph. Splits a clause joined by "and"
+      into separate items, because it almost always is one. Treats an item restated from an
+      earlier message as still an item, marked as a repeat — a repeat is evidence the last
+      pass failed, not evidence it can be skipped.
+    refuses: >
+      To mark a campaign complete while any decomposed item lacks a terminal status, and to
+      read "I did the first three" as SUCCESS however good those three are. Silence on an
+      item is not an answer.
 
   # ------------------------------------------------------------ DIV-WFH Workforce Health
   - id: AGT-WFH-MGR

@@ -33,3 +33,52 @@ determinism is claimed.
 
 Cloned studies are disposable by design: the knowledge lands here and in the Console
 threads; the clones themselves live in a session scratchpad and are not kept.
+
+---
+
+## n8n as the orchestrator — rejected, with one narrow use kept
+
+**Rejected as an orchestrator.** n8n is a resident workflow-automation service, and using it
+to drive campaigns would break three things at once:
+
+- **A resident service.** Already rejected once, for OmniRoute's gateway, on the same grounds.
+  Zero dependencies and zero resident processes is load-bearing here, not aesthetic: CI has no
+  `npm install` step precisely so the day one creeps in is visible.
+- **State outside the ledger.** Workflow state living in n8n means the single source of truth
+  is split, and the moment it is split the learning stops being reversible — you can no longer
+  throw away every conclusion and recompute from the events, because some of the events are
+  somewhere else.
+- **A thing to keep patched and running.** The project bet against that.
+
+**Kept, narrowly: n8n as a doorbell.** Triggering F.O.R.G.E. from something genuinely external
+— a GitHub webhook, a cron, a Slack command — is not orchestration logic, it is an event
+source, and n8n is fine at it:
+
+```
+Webhook (PR opened) → Execute Command: forge plan "review PR #{{$json.number}}" → post the Vector
+```
+
+n8n never sees agent state, never writes the ledger, never makes a routing decision. It is a
+doorbell, not a brain.
+
+**And if you do not already run n8n, do not add it for this.** A cron entry or a GitHub Action
+does the identical job with one less moving part and nothing new to secure. This is written
+down as a decision rather than a task because the right amount of work here is usually zero.
+
+## Shipping a demo `.forge/` — decided against
+
+The question: should a fresh clone include an example learned state, so a new reader can see
+what a matured installation looks like?
+
+**No.** The cost is not the disk space, it is that a demo ledger is indistinguishable from a
+real one at a glance, and the first thing anyone would do is read numbers off it. `forge
+benchmark` on a fresh clone currently says *"the ledger is empty. This is honest rather than
+useful: there is no starting number to invent."* Shipping a demo would replace that sentence
+with a number, and the number would be fiction with a plausible shape — the exact failure
+RULE 007 exists to prevent, committed deliberately.
+
+If it is ever revisited, the constraints agreed here are: it lives at `examples/.forge-demo/`
+and never at `.forge/`; `release-guard.yml` continues to refuse the real path; and a doctor
+check asserts the demo contains no real workspace paths, timestamps or agent-authored content
+from a private machine. Until someone wants it enough to build those guards, the empty state
+is more honest than the illustrative one.

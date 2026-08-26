@@ -91,6 +91,8 @@ export const CHECK_NAMES = [
   'retirement_requires_extraction',
   'board_partition_is_exact',
   'chair_does_not_override',
+  'evidence_grades_spot_checked',
+  'multi_item_requests_decompose',
 ];
 
 /**
@@ -101,7 +103,7 @@ export const CHECK_NAMES = [
  * which is exactly inverted, since the specialists emit most of the messages and are the
  * ones whose output has to be checkable.
  */
-export const resolveContract = (agent, contracts) => {
+export const resolveContract = (agent, contracts, { mode = null } = {}) => {
   const fields = [...contracts.base.fields];
   const optional = [...(contracts.base.when_applicable || [])];
   const rules = [...(contracts.base.rules || [])];
@@ -123,7 +125,37 @@ export const resolveContract = (agent, contracts) => {
   // rather than printing the key twice and letting the agent choose which to answer.
   const seen = new Set();
   const dedup = fields.filter((f) => (seen.has(f.key) ? false : seen.add(f.key)));
-  return { fields: dedup, optional, rules: [...new Set(rules)], families };
+
+  /**
+   * MATCH THE AUDITABILITY COST TO THE AUDITABILITY STAKES.
+   *
+   * `detectMode()` already classifies every request as direct | focused | standard |
+   * campaign, and that classification was used to pick a model tier and then thrown away.
+   * Meanwhile the same 17-field contract was paid on a one-line typo fix and on a
+   * twelve-stage migration, because the contract had no idea which it was in.
+   *
+   * This is NOT a weakening of RULE 009. A one-line fix genuinely does not need
+   * ALTERNATIVES_REJECTED and DEPENDENCIES written out as "none" five times; a multi-file
+   * campaign genuinely does. `standard` and `campaign` are untouched — every reduction
+   * happens only where the router's own classification says there is nothing to be rigorous
+   * about, and the trimmed fields move to OPTIONAL rather than disappearing, so an agent
+   * with something real to say in one still can.
+   *
+   * The rendered agent file uses the full contract (no mode is known at build time). This
+   * applies at DISPATCH, where the mode is known.
+   */
+  const byMode = contracts.by_mode && mode ? contracts.by_mode[mode] : null;
+  if (byMode && Array.isArray(byMode.fields_required)) {
+    const keep = new Set(byMode.fields_required);
+    const kept = dedup.filter((f) => keep.has(f.key));
+    const demoted = dedup.filter((f) => !keep.has(f.key));
+    // A mode naming a field that no longer exists must not silently drop the whole contract.
+    if (kept.length) {
+      return { fields: kept, optional: [...demoted, ...optional], rules: [...new Set(rules)], families, mode };
+    }
+  }
+
+  return { fields: dedup, optional, rules: [...new Set(rules)], families, mode: mode || null };
 };
 
 /**
@@ -201,8 +233,31 @@ export const load = () => {
   const byName = new Map(all.map((a) => [a.name, a]));
   const byDivision = new Map(constitution.divisions.map((d) => [d.id, all.filter((a) => a.division === d.id)]));
 
+  /**
+   * capability -> the specialists that hold it, computed once here.
+   *
+   * `selectAgents()` filtered the entire roster for every capability a plan asked for, so a
+   * campaign requesting eight capabilities scanned 68 agents eight times. That is invisible
+   * at this size and is the wrong shape: the roster is meant to grow, and this is the loop
+   * that decides how far it can. Building the index during load costs one pass over a list
+   * already being walked, and turns routing from O(roster x capabilities) into
+   * O(holders-of-that-capability x capabilities).
+   *
+   * Specialists only — managers route and board seats govern; neither is staffed by
+   * capability match, and including them would change which agents a plan can select, which
+   * would make this a behaviour change wearing a performance costume.
+   */
+  const byCapability = new Map();
+  for (const a of all) {
+    if (a.role !== 'specialist') continue;
+    for (const cap of a.capabilities || []) {
+      if (!byCapability.has(cap)) byCapability.set(cap, []);
+      byCapability.get(cap).push(a);
+    }
+  }
+
   const seatOf = new Map([...owned].map(([d, seat]) => [d, seat]));
-  return Object.freeze({ constitution, roster, routing, contracts, all, byId, byName, byDivision, seatOf });
+  return Object.freeze({ constitution, roster, routing, contracts, all, byId, byName, byDivision, byCapability, seatOf });
 };
 
 /** Small formatting helpers shared by every command that prints to a terminal. */

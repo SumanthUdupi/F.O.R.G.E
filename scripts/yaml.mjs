@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 /**
  * A deliberately small YAML reader.
  *
@@ -250,3 +251,34 @@ export const parse = (text) => {
 };
 
 export { YamlError };
+
+/**
+ * Reading YAML from a file — one wrapper, so failures say the same thing everywhere.
+ *
+ * Four call sites each wrote `parse(fs.readFileSync(p, 'utf8'))` with their own (or no)
+ * error handling. Three different failure modes came out of that: core.mjs let a parse error
+ * escape as a bare "unsupported structure at line 41" with no filename, learn.mjs swallowed
+ * it into a default, and benchmark.mjs let ENOENT surface raw. The same broken file produced
+ * three different experiences depending on which command you happened to run.
+ *
+ * The filename is the whole point. A parser error without one sends you looking through four
+ * files for a line 41 that is in exactly one of them — which is how the golden-set failure
+ * was diagnosed the slow way.
+ */
+export const readYamlFile = (file, { fallback = undefined } = {}) => {
+  let text;
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    if (fallback !== undefined) return fallback;
+    throw new Error(`cannot read ${file}: ${e.code === 'ENOENT' ? 'no such file' : e.message}`);
+  }
+  try {
+    const value = parse(text);
+    return value === null || value === undefined ? (fallback !== undefined ? fallback : value) : value;
+  } catch (e) {
+    if (fallback !== undefined) return fallback;
+    // The parser reports a line; this adds the file, which is the half that was missing.
+    throw new Error(`${file} is not valid YAML: ${e.message}`);
+  }
+};

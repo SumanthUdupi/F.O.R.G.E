@@ -91,3 +91,5 @@ This feeds routing, Spending and Recognition in the Console. Skipping it starves
 - **Attention is the scarce resource** — One brief, not sixteen handoffs. Escalate what needs a human; absorb the rest.
 - **Simplicity has a deadline** — Complexity is a timing question, not a taste question. Add it when the second case arrives, not the first.
 - **The organization learns or it repeats** — Every campaign leaves the Archives measurably different, or it explains why it did not.
+
+<!-- F.O.R.G.E. v1.1.0 · registry ccbe6f51 · generated, edit registry/ not this file -->

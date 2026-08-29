@@ -28,7 +28,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse } from './yaml.mjs';
+import { readYamlFile } from './yaml.mjs';
 import { files, readLedger, derive } from './ledger.mjs';
 import { waiting } from './mailbox.mjs';
 
@@ -377,7 +377,7 @@ export const loadOverlay = (cwd = process.cwd()) => {
   const p = path.join(cwd, '.forge', 'overlay.yaml');
   if (!fs.existsSync(p)) return { adaptations: [] };
   try {
-    return parse(fs.readFileSync(p, 'utf8')) || { adaptations: [] };
+    return readYamlFile(p, { fallback: { adaptations: [] } });
   } catch {
     return { adaptations: [] };
   }

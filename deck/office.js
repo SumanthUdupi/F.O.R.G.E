@@ -164,47 +164,80 @@ const rr = (x, y, w, h, r) => {
   ctx.roundRect(x, y, w, h, r);
 };
 
+/**
+ * A person, drawn as a NODE rather than a character.
+ *
+ * The old figure was a body, a hexagonal head, a chair and a desk with papers on it — a
+ * little cartoon of a worker. That is what made the whole surface read as a game: at 68
+ * agents it is sixty-eight cartoons, and the eye starts looking for the story instead of the
+ * state. The Principal's own words were "professional, RPG-inspiring but not kiddish".
+ *
+ * So: keep the spatial metaphor, which is genuinely good, and lose the illustration. Each
+ * agent is now a hexagonal node — the same hex as the F.O.R.G.E. mark, so the shape is brand
+ * rather than decoration — sitting on a short baseline that stands in for the desk.
+ *
+ * WHAT THE MARKS MEAN, since every one of them now has to earn its place:
+ *   fill       the agent's identity hue, constant across themes
+ *   ring       a manager. One extra stroke, not a tie-pin
+ *   baseline   the desk. A line, because a desk is a surface and not an object
+ *   pulse      currently working — the only motion, and it is a state, not a flourish
+ *   bar        an active streak, drawn as a small meter rather than a flame
+ *
+ * Nothing bobs. Idle motion was the single largest contributor to the toy feeling: an office
+ * where everyone is gently bouncing is an aquarium. Motion is now reserved for "this agent is
+ * doing something right now", which makes it information.
+ */
 const person = (c, time, opts = {}) => {
-  const bob = reduced ? 0 : Math.sin(time / 420 + c.seed) * 1.6;
-  const typing = opts.typing && !reduced ? Math.sin(time / 90 + c.seed) * 1.4 : 0;
   const hue = hueFor(c.agent);
-  // chair
-  ctx.fillStyle = 'rgba(43,33,23,.10)';
-  rr(c.x - 11, c.y + 6, 22, 8, 3); ctx.fill();
-  // body
-  ctx.fillStyle = hue;
-  rr(c.x - 9, c.y - 8 + bob, 18, 16, 6); ctx.fill();
-  // hex head
-  const hy = c.y - 16 + bob + typing * 0.4;
+  const r = 9;
+  const working = opts.typing && !reduced;
+  // A slow breath, ONLY while working. Amplitude is deliberately under a pixel of apparent
+  // size — enough to catch peripheral vision, not enough to read as an animation.
+  const pulse = working ? 1 + Math.sin(time / 340 + c.seed) * 0.06 : 1;
+
+  // The desk: one hairline. It anchors the node to the floor and says nothing else.
+  ctx.strokeStyle = PAL.line;
+  ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let i = 0; i < 6; i += 1) {
-    const a = -Math.PI / 2 + (i * Math.PI) / 3;
-    ctx[i ? 'lineTo' : 'moveTo'](c.x + Math.cos(a) * 8, hy + Math.sin(a) * 8.6);
-  }
-  ctx.closePath();
-  ctx.fillStyle = opts.dim ? PAL.dim : PAL.paper;
-  ctx.fill();
-  ctx.strokeStyle = hue;
-  ctx.lineWidth = 1.6;
+  ctx.moveTo(c.x - 14, c.y + 13.5);
+  ctx.lineTo(c.x + 14, c.y + 13.5);
   ctx.stroke();
-  if (c.manager) { // a small tie-pin of authority: the manager's head carries its hue
-    ctx.fillStyle = hue;
-    ctx.beginPath(); ctx.arc(c.x, hy, 2.6, 0, 7); ctx.fill();
-  }
-  // desk with papers
-  ctx.fillStyle = PAL.wood;
-  rr(c.x - 15, c.y + 12, 30, 9, 2.5); ctx.fill();
-  if (opts.typing) {
-    ctx.fillStyle = PAL.paper;
-    rr(c.x - 6 + typing, c.y + 9, 12, 4, 1); ctx.fill();
-  }
-  if (opts.flame) {
-    const f = reduced ? 0 : Math.sin(time / 150 + c.seed) * 1.5;
-    ctx.fillStyle = PAL.warn;
+
+  // The node.
+  const hex = (cx, cy, rad) => {
     ctx.beginPath();
-    ctx.moveTo(c.x, hy - 18 - f);
-    ctx.quadraticCurveTo(c.x + 5, hy - 12, c.x, hy - 8);
-    ctx.quadraticCurveTo(c.x - 5, hy - 12, c.x, hy - 18 - f);
+    for (let i = 0; i < 6; i += 1) {
+      const a = -Math.PI / 2 + (i * Math.PI) / 3;
+      ctx[i ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * rad, cy + Math.sin(a) * rad * 1.08);
+    }
+    ctx.closePath();
+  };
+
+  if (working) {
+    // A soft halo instead of a typing animation. Same information, no jitter.
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = hue;
+    hex(c.x, c.y, r * pulse * 1.9);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  hex(c.x, c.y, r * pulse);
+  ctx.fillStyle = opts.dim ? PAL.dim : hue;
+  ctx.fill();
+
+  if (c.manager) {
+    // Authority is one ring. It reads at a glance and does not need a legend.
+    ctx.strokeStyle = PAL.ink;
+    ctx.lineWidth = 1.4;
+    hex(c.x, c.y, r * pulse + 3.5);
+    ctx.stroke();
+  }
+
+  if (opts.flame) {
+    // A streak, as a meter. A flame is a mood; a bar is a quantity.
+    ctx.fillStyle = PAL.warn;
+    rr(c.x - 6, c.y - r - 7, 12, 2.5, 1.25);
     ctx.fill();
   }
 };

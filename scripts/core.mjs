@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { parse } from './yaml.mjs';
+import { parse, readYamlFile } from './yaml.mjs';
 
 // fileURLToPath, not `new URL(...).pathname` -- the latter yields "/D:/a/repo" on Windows
 // and every path built from it silently misses.
@@ -75,7 +75,9 @@ export const listWorkspaces = () => {
   }
 };
 
-const readYaml = (p) => parse(fs.readFileSync(p, 'utf8'));
+// One wrapper for every YAML read in the repo — it names the FILE in a parse error,
+// which is the half that was missing when four call sites each rolled their own.
+const readYaml = (p) => readYamlFile(p);
 
 /** Every doctor check named in the constitution must exist here. Named, so RULE -> code is greppable. */
 export const CHECK_NAMES = [

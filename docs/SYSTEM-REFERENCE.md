@@ -386,6 +386,19 @@ F.O.R.G.E. — Foundry for Organized Reasoning, Governance and Evolution
       --proposal <id> | --prefer <agent> | --avoid <agent>
   forge instruction --add ".."  a standing instruction for this workspace
       --applies-to <agent> --expires YYYY-MM-DD
+  forge retro <campaign>        the campaign as a timeline, rendered to HTML
+      --reasoning ".." --agent <n>   record why a dispatch happened (diagnostic only)
+  forge growth                  apprenticeships, capability links, recurring shapes —
+                                each refuses to speak below its evidence threshold
+  forge lint                    this workspace's USE of the organization. Non-zero on a
+                                pending checklist or an unresolved contradiction
+  forge archive [--before YYYY] move closed years into ledger shards. Nothing is deleted
+  forge publish [--workspace-id x] [--include-instructions]
+                                write a shareable bundle LOCALLY. Sends nothing
+  forge learn-from <path>       read another workspace's bundle as proposals
+  forge federate <https-url> --i-approve-egress
+                                the one command that reaches the network. Refuses without
+                                the flag, and only ever reads
   forge plugins                 installed validators, hooks and exporters
   forge export --format <name>  render the ledger through an installed exporter
 
@@ -422,31 +435,34 @@ Nothing is applied without the Principal approving it explicitly via `forge evol
 | File | Purpose | Bytes |
 |---|---|---|
 | `scripts/activity.mjs` | Live activity, read from the host runtime's own transcripts. | 11419 |
-| `scripts/benchmark.mjs` | Benchmarking — two different questions that both get called "benchmark". | 7511 |
+| `scripts/benchmark.mjs` | Benchmarking — two different questions that both get called "benchmark". | 7500 |
 | `scripts/breakers.mjs` | Circuit breakers and the checkable principles — the numbers, given a code path. | 6547 |
 | `scripts/charter-doc.mjs` | CHARTER.md, generated from charter/constitution.yaml. | 6159 |
 | `scripts/checklist.mjs` | Completion auditing — closing the loop between what was asked and what was delivered. | 9133 |
-| `scripts/core.mjs` | Loading and cross-referencing. Every other script starts here. | 12293 |
+| `scripts/core.mjs` | Loading and cross-referencing. Every other script starts here. | 12458 |
 | `scripts/deck.mjs` | The Command Deck — a local operations view for the organization. | 23452 |
 | `scripts/doctor.mjs` | The constitutional audit. | 37131 |
+| `scripts/exchange.mjs` | Carrying lessons between workspaces — and the gate that stands in front of it. | 9572 |
 | `scripts/explain.mjs` | One generated reference for the whole system. | 9872 |
-| `scripts/forge.mjs` | The F.O.R.G.E. command line. | 52463 |
+| `scripts/forge.mjs` | The F.O.R.G.E. command line. | 63873 |
+| `scripts/growth.mjs` | Learning that needs history — apprenticeship, capability correlation, campaign templates. | 7690 |
 | `scripts/insight.mjs` | The questions the ledger can answer but nothing was asking. | 13352 |
 | `scripts/install.mjs` | Install into the host runtime's configuration directory. | 9722 |
-| `scripts/learn.mjs` | The evolution layer. This is the part that makes the tenth campaign better than the first. | 20999 |
-| `scripts/ledger.mjs` | The append-only record, and the memory derived from it. | 22323 |
+| `scripts/learn.mjs` | The evolution layer. This is the part that makes the tenth campaign better than the first. | 21000 |
+| `scripts/ledger.mjs` | The append-only record, and the memory derived from it. | 27215 |
 | `scripts/mailbox.mjs` | The mailbox — how the Principal talks to the organization between sessions. | 3965 |
 | `scripts/minutes.mjs` | The minutes — decisions, dissent, and what a campaign taught. | 7857 |
 | `scripts/plugins.mjs` | Extension points — three of them, each with a hard boundary. | 8812 |
-| `scripts/render.mjs` | Turn the registry into agents the host runtime can actually dispatch. | 14124 |
-| `scripts/router.mjs` | Routing. Deterministic, model-free, explainable. | 8092 |
+| `scripts/render.mjs` | Turn the registry into agents the host runtime can actually dispatch. | 15390 |
+| `scripts/retro.mjs` | The campaign retrospective — a timeline you can look at, and the reasoning behind it. | 9561 |
+| `scripts/router.mjs` | Routing. Deterministic, model-free, explainable. | 9453 |
 | `scripts/runner.mjs` | The runner — the Console's bridge to Claude Code itself. | 6226 |
 | `scripts/scaffold.mjs` | Scaffolding a new specialist. | 7160 |
 | `scripts/tuning.mjs` | Per-agent tuning — the Principal's hand on any agent, manager or specialist. | 6352 |
 | `scripts/vector.mjs` | The Campaign Vector: a request turned into an explicit graph of stages. | 14620 |
 | `scripts/verify.mjs` | Spot-checking evidence claims — the difference between an audit trail and a diary. | 8148 |
 | `scripts/yaml-fuzz.mjs` | Fuzzing the hand-rolled YAML parser. | 7695 |
-| `scripts/yaml.mjs` | A deliberately small YAML reader. | 8829 |
+| `scripts/yaml.mjs` | A deliberately small YAML reader. | 10294 |
 
 ---
 

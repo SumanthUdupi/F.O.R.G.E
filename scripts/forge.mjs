@@ -15,7 +15,7 @@ import path from 'node:path';
 import { load, ui, ROOT, registerWorkspace } from './core.mjs';
 import { composeVector, renderVector } from './vector.mjs';
 import { runDoctor } from './doctor.mjs';
-import { build } from './render.mjs';
+import { build, buildVersion as buildVersionOf } from './render.mjs';
 import { observe, readLedger, derive, derivedMemory, saveMemory, files, estimateStages, measuredSpend } from './ledger.mjs';
 
 /**
@@ -117,6 +117,19 @@ F.O.R.G.E. — Foundry for Organized Reasoning, Governance and Evolution
       --proposal <id> | --prefer <agent> | --avoid <agent>
   forge instruction --add ".."  a standing instruction for this workspace
       --applies-to <agent> --expires YYYY-MM-DD
+  forge retro <campaign>        the campaign as a timeline, rendered to HTML
+      --reasoning ".." --agent <n>   record why a dispatch happened (diagnostic only)
+  forge growth                  apprenticeships, capability links, recurring shapes —
+                                each refuses to speak below its evidence threshold
+  forge lint                    this workspace's USE of the organization. Non-zero on a
+                                pending checklist or an unresolved contradiction
+  forge archive [--before YYYY] move closed years into ledger shards. Nothing is deleted
+  forge publish [--workspace-id x] [--include-instructions]
+                                write a shareable bundle LOCALLY. Sends nothing
+  forge learn-from <path>       read another workspace's bundle as proposals
+  forge federate <https-url> --i-approve-egress
+                                the one command that reaches the network. Refuses without
+                                the flag, and only ever reads
   forge plugins                 installed validators, hooks and exporters
   forge export --format <name>  render the ledger through an installed exporter
 
@@ -413,6 +426,9 @@ switch (cmd) {
           raw_output: flag('raw') === true ? null : flag('raw'),
           trace: flag('trace') === true ? null : flag('trace'),
           hypothesis: flag('hypothesis') === true ? null : flag('hypothesis'),
+          // Stamped automatically. An outcome that cannot be tied to a build version makes
+          // "did the last prompt edit make this worse" unanswerable after the fact.
+          build: (() => { try { const v = buildVersionOf(); return `${v.version}+${v.registry}`; } catch { return null; } })(),
         },
         process.cwd(),
       );
@@ -1068,6 +1084,188 @@ switch (cmd) {
     console.log(`  average score ${c.currentAvg} → ${c.proposedAvg} (${c.delta > 0 ? '+' : ''}${c.delta})`);
     console.log(`\n  A higher average is not automatically better — it can mean the router simply found`);
     console.log('  a more confident agent for a task the de-preferred one was actually right for.\n');
+    break;
+  }
+
+  /** The campaign as a timeline you can look at, not a report you have to parse. */
+  case 'retro': {
+    const { timeline, renderRetro, recordReasoning } = await import('./retro.mjs');
+    if (flag('reasoning') && flag('reasoning') !== true) {
+      try {
+        const r = recordReasoning({
+          agent: String(flag('agent') || ''),
+          campaign: flag('campaign') === true ? null : flag('campaign'),
+          text: String(flag('reasoning')),
+          considered: flag('considered') === true || !flag('considered') ? [] : String(flag('considered')).split(',').map((x) => x.trim()),
+        }, process.cwd());
+        console.log(`\n  recorded reasoning for ${r.agent} — diagnostic only, routing never reads it.\n`);
+      } catch (e) { die(e.message); }
+      break;
+    }
+    const campaign = positional()[0];
+    if (!campaign) die('retro needs a campaign: forge retro <campaign-id> [--out file.html]');
+    const t = timeline(campaign, process.cwd());
+    if (!t.found) die(`nothing recorded for campaign ${campaign}`);
+    const out = flag('out') === true || !flag('out') ? path.join(files().dir, `retro-${campaign.replace(/[^A-Za-z0-9._-]/g, '_')}.html`) : String(flag('out'));
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    fs.writeFileSync(out, renderRetro(t));
+    console.log(ui.head(`RETROSPECTIVE — ${campaign}`));
+    console.log(`\n  ${t.stages} stage(s) · ${t.agents.length} agent(s) · ${t.tokens.toLocaleString()} tokens · ${t.failed} failed`);
+    console.log(`  ${t.events.length} event(s) on the timeline${t.subCampaigns.length ? ` across ${t.subCampaigns.length + 1} campaign id(s)` : ''}`);
+    console.log(`\n  wrote ${path.relative(process.cwd(), out)} — open it in a browser.\n`);
+    break;
+  }
+
+  /** Lessons this workspace could hand to another one. Writes a local file; sends nothing. */
+  case 'publish': {
+    const { publish } = await import('./exchange.mjs');
+    try {
+      const r = publish(process.cwd(), {
+        workspaceId: flag('workspace-id') === true ? null : flag('workspace-id'),
+        includeInstructions: flag('include-instructions') === true,
+        out: flag('out') === true ? null : flag('out'),
+      });
+      console.log(ui.head('PUBLISH'));
+      console.log(`\n  wrote ${path.relative(process.cwd(), r.path)}`);
+      console.log(`  ${Object.keys(r.bundle.cost_profile).length} capability cost profile(s) · ${r.bundle.lessons.length} lesson(s) · confidence: ${r.bundle.confidence}`);
+      console.log(`\n  NOTHING WAS SENT. This is a local file; moving it anywhere is your decision,`);
+      console.log('  which is exactly where the egress gate belongs.');
+      if (!r.bundle.lessons.length) console.log('\n  (no lessons yet — this workspace has not learned anything transferable)');
+      if (!flag('include-instructions')) console.log('  Standing instructions were excluded. --include-instructions to add them.');
+      console.log('');
+    } catch (e) { die(e.message); }
+    break;
+  }
+
+  /** Read another workspace's bundle. Produces proposals, applies nothing, imports no memory. */
+  case 'learn-from': {
+    const { learnFrom } = await import('./exchange.mjs');
+    const src = positional()[0];
+    if (!src) die('learn-from needs a path: forge learn-from ../other-service/.forge/published.json');
+    try {
+      const r = learnFrom(src, { cwd: process.cwd() });
+      const f2 = files();
+      fs.mkdirSync(f2.dir, { recursive: true });
+      const existing = fs.existsSync(f2.proposals) ? JSON.parse(fs.readFileSync(f2.proposals, 'utf8')) : [];
+      const merged = [...existing, ...r.proposals.map((x, i) => ({ ...x, id: `IMP${existing.length + i + 1}`, impact: 'low', impactScore: 0, affectsShare: 0, reversibility: 'instant — delete the overlay entry to withdraw it' }))];
+      fs.writeFileSync(f2.proposals, `${JSON.stringify(merged, null, 2)}\n`);
+      console.log(ui.head(`LEARN FROM ${r.from}`));
+      console.log(`\n  confidence of the source: ${r.confidence}`);
+      for (const pr of r.proposals) console.log(`\n  [${pr.kind}] ${pr.change}\n      ${pr.observation} (${pr.grade})`);
+      console.log(`\n  ${r.proposals.length} proposal(s) queued. ${r.note}`);
+      console.log('  Review with: forge evolve\n');
+    } catch (e) { die(e.message); }
+    break;
+  }
+
+  /** The one command that reaches the network, and it refuses without explicit approval. */
+  case 'federate': {
+    const { federate, learnFrom } = await import('./exchange.mjs');
+    const url = positional()[0];
+    if (!url) die('federate needs an https registry URL');
+    try {
+      const bundle = await federate(url, { approve: flag('i-approve-egress') === true });
+      const tmpFile = path.join(files().dir, 'federated.json');
+      fs.mkdirSync(path.dirname(tmpFile), { recursive: true });
+      fs.writeFileSync(tmpFile, JSON.stringify(bundle, null, 2));
+      const r = learnFrom(tmpFile, { cwd: process.cwd() });
+      console.log(ui.head('FEDERATE'));
+      console.log(`\n  fetched a bundle from ${r.from} (confidence: ${r.confidence})`);
+      console.log(`  ${r.proposals.length} proposal(s). ${r.note}\n`);
+    } catch (e) { die(e.message); }
+    break;
+  }
+
+  /** Move closed years into shards. A move, verified before the live file is touched. */
+  case 'archive': {
+    const { archiveLedger } = await import('./ledger.mjs');
+    try {
+      const before = Number(flag('before') === true ? new Date().getFullYear() : flag('before') || new Date().getFullYear());
+      const r = archiveLedger(process.cwd(), { before });
+      console.log(ui.head('ARCHIVE'));
+      if (!r.archived) {
+        console.log(`\n  nothing older than ${before} to archive. ${r.kept} row(s) stay live.\n`);
+        break;
+      }
+      console.log(`\n  moved ${r.archived} row(s) into ${r.shards.length} shard(s); ${r.kept} stay live.`);
+      for (const sh of r.shards) console.log(`    ${path.relative(process.cwd(), sh)}`);
+      console.log('\n  Nothing was deleted — readLedger reads shards and the live file as one history.\n');
+    } catch (e) { die(e.message); }
+    break;
+  }
+
+  /** Learning that needs history — and refuses to speak without it. */
+  case 'growth': {
+    const { mentorships, capabilityLinks, templates } = await import('./growth.mjs');
+    const o = org();
+    const rows = readLedger();
+    const m = mentorships(o, rows);
+    const l = capabilityLinks(rows);
+    const t = templates(rows);
+    console.log(ui.head('GROWTH — what the ledger is big enough to say'));
+
+    console.log(ui.rule('apprenticeships'));
+    if (!m.enoughData) console.log(`  nothing to pair yet. ${m.skipped.length ? m.skipped[0].why : 'no capability has a measured strongest holder'}`);
+    for (const pr of m.pairs.slice(0, Number(flag('top') || 8))) {
+      console.log(`  ${pr.capability.padEnd(14)} ${pr.mentor} (${pr.mentorRate}/${pr.mentorN}) mentors ${pr.apprentice} at ${Math.round(pr.share * 100)}%`);
+      console.log(`  ${''.padEnd(14)} ${pr.why}`);
+    }
+
+    console.log(ui.rule('capability links'));
+    if (!l.enoughData) console.log(`  ${l.why}`);
+    for (const x of l.links) console.log(`  "${x.from}" → "${x.to}"   ${x.why}`);
+
+    console.log(ui.rule('recurring shapes'));
+    if (!t.enoughData) console.log(`  ${t.why}`);
+    for (const x of t.templates) console.log(`  ${x.name.padEnd(24)} ${x.runs}× · ${Math.round(x.successRate * 100)}% clean · ~${x.avgTokens.toLocaleString()} tokens\n      ${x.sequence.join(' → ')}`);
+
+    console.log(ui.rule());
+    console.log(`  Every threshold here is deliberately high. Below it these report nothing rather`);
+    console.log('  than something, because a correlation from five observations always looks strong.\n');
+    break;
+  }
+
+  /**
+   * Constitutional compliance for a repo that USES F.O.R.G.E. — the CI-facing check.
+   *
+   * `doctor` audits the organization. This audits a workspace's use of it: is the ledger
+   * being closed, are EVIDENCE claims checkable, is anything sitting contradicted.
+   */
+  case 'lint': {
+    const { unresolvedMismatches } = await import('./verify.mjs');
+    const rows = readLedger();
+    const problems = [];
+    const warnings = [];
+
+    const work = rows.filter((r) => r.agent && !r.corrupt && r.kind !== 'spotcheck');
+    if (!work.length) warnings.push('no observations in this workspace — nothing here has closed its ledger');
+
+    const graded = work.filter((r) => r.grade);
+    if (work.length >= 5 && graded.length / work.length < 0.5) {
+      warnings.push(`${work.length - graded.length} of ${work.length} rows carry no evidence grade — those claims can never be spot-checked`);
+    }
+    const evidenceRows = work.filter((r) => r.grade === 'EVIDENCE');
+    const withArtifacts = evidenceRows.filter((r) => r.artifacts && r.artifacts.length);
+    if (evidenceRows.length >= 3 && !withArtifacts.length) {
+      warnings.push(`${evidenceRows.length} EVIDENCE claim(s) name no artifact — RULE 013 has nothing to check`);
+    }
+    for (const u of unresolvedMismatches(process.cwd())) {
+      problems.push(`${u.agent} claimed EVIDENCE and the spot-check disagreed (${u.campaign || 'no campaign'}): ${u.why}`);
+    }
+    const { listChecklists, checklistComplete } = await import('./checklist.mjs');
+    for (const cl of listChecklists()) {
+      const st = checklistComplete(cl.campaign, process.cwd());
+      if (!st.complete) problems.push(`checklist ${cl.campaign} has ${st.open.length} item(s) with no terminal status (RULE 014)`);
+    }
+
+    console.log(ui.head('LINT — this workspace\'s use of the organization'));
+    console.log('');
+    for (const w of warnings) console.log(ui.warn(w));
+    for (const pr of problems) console.log(ui.fail(pr));
+    if (!problems.length && !warnings.length) console.log(ui.pass(`${work.length} observation(s), all graded, nothing outstanding`));
+    console.log(ui.rule());
+    console.log(problems.length ? `  ${problems.length} problem(s) — exit 1\n` : `  clean${warnings.length ? ` (${warnings.length} warning(s))` : ''}\n`);
+    if (problems.length) process.exit(1);
     break;
   }
 

@@ -142,7 +142,28 @@ export const scoreAgent = (agent, capability, org, memory = {}, bias = {}, phase
  * Managers are excluded from staffing. A manager who takes the task has become a
  * specialist with a title, which RULE 005 exists to prevent -- and doctor asserts it.
  */
+/**
+ * Staffing is memoised within one process.
+ *
+ * A single `plan` calls selectAgents once, so this buys nothing there — and that is the
+ * honest reason it was left out at first. It matters for the two callers that route the SAME
+ * request repeatedly: `bench-routing` replays a golden set, and `compare` composes the same
+ * Vector twice with different bias to produce a counterfactual. Both were doing identical
+ * scoring work twice over.
+ *
+ * The key includes memory and bias, not just the capabilities — staffing that ignored a
+ * changed reliability score would serve a stale answer, which is exactly the bug the ledger
+ * cache was careful to avoid. Cleared whenever the process ends, which for the CLI is
+ * immediately; nothing persists to disk, because a wrong route cached across runs would be
+ * far worse than a recomputed one.
+ */
+const staffingMemo = new Map();
+export const clearStaffingMemo = () => staffingMemo.clear();
+
 export const selectAgents = (capabilities, org, memory = {}, bias = {}, phases = {}) => {
+  const memoKey = JSON.stringify([[...new Set(capabilities)].sort(), phases, bias, memory && Object.keys(memory).length ? memory : null]);
+  const hit = staffingMemo.get(memoKey);
+  if (hit) return hit;
   const chosen = [];
   const considered = [];
   for (const cap of [...new Set(capabilities)]) {
@@ -172,7 +193,11 @@ export const selectAgents = (capabilities, org, memory = {}, bias = {}, phases =
     if (!prev) seen.set(c.agent.id, { ...c, capabilities: [c.capability] });
     else prev.capabilities.push(c.capability);
   }
-  return { staffed: [...seen.values()], considered };
+  const result = { staffed: [...seen.values()], considered };
+  // Bounded: a long-lived Console replaying many distinct requests must not grow without end.
+  if (staffingMemo.size > 200) staffingMemo.clear();
+  staffingMemo.set(memoKey, result);
+  return result;
 };
 
 export { hits };

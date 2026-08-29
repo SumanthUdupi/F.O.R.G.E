@@ -46,6 +46,13 @@ _forge() {
     'postmortem:what a campaign cost and got wrong'
     'patterns:agent sequences that keep recurring, and whether they work'
     'compare:what a routing proposal would actually change'
+    'retro:the campaign as a timeline you can look at'
+    'publish:write a shareable bundle locally — sends nothing'
+    'learn-from:read another workspace bundle as proposals'
+    'federate:fetch a remote registry — requires explicit egress approval'
+    'archive:move closed years into ledger shards'
+    'growth:apprenticeships, capability links and recurring shapes'
+    'lint:this workspace's use of the organization'
     'help:the command surface'
   )
   if (( CURRENT == 2 )); then

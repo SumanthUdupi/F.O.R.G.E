@@ -1,0 +1,40 @@
+{
+  "name": "forge-console",
+  "displayName": "F.O.R.G.E.",
+  "description": "The organization's Console, its Campaign Vector, and its constitutional audit, inside the editor.",
+  "version": "1.1.0",
+  "publisher": "forge",
+  "license": "MIT",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "forge.deck", "title": "F.O.R.G.E.: Open the Console", "icon": "$(organization)" },
+      { "command": "forge.plan", "title": "F.O.R.G.E.: Plan a request" },
+      { "command": "forge.doctor", "title": "F.O.R.G.E.: Constitutional audit" },
+      { "command": "forge.lint", "title": "F.O.R.G.E.: Lint this workspace's use of the organization" },
+      { "command": "forge.checklist", "title": "F.O.R.G.E.: Completion checklist (RULE 014)" },
+      { "command": "forge.verify", "title": "F.O.R.G.E.: Spot-check evidence claims (RULE 013)" },
+      { "command": "forge.context", "title": "F.O.R.G.E.: What this workspace has taught the organization" }
+    ],
+    "configuration": {
+      "title": "F.O.R.G.E.",
+      "properties": {
+        "forge.home": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the F.O.R.G.E. checkout. Falls back to $FORGE_HOME, then ~/F.O.R.G.E."
+        },
+        "forge.port": { "type": "number", "default": 7717, "description": "Port for the Console. Loopback only." },
+        "forge.lintOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Run the constitutional audit when a registry or charter file is saved. Off by default — a check that fires on every keystroke is a check people disable."
+        }
+      }
+    }
+  },
+  "scripts": { "test": "node ./test/manifest.test.js" }
+}

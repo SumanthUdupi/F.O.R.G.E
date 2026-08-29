@@ -17,7 +17,31 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { paths, resolveContract } from './core.mjs';
+import { paths, resolveContract, ROOT } from './core.mjs';
+
+/**
+ * The build stamp — which version of the organization produced this file.
+ *
+ * Without it, "campaign C-8 succeeded and C-9 failed" cannot be attributed: was the roster
+ * different, was a contract field added, or did the work simply differ? A stamp makes that
+ * answerable after the fact, which is the whole reason to have one.
+ *
+ * Derived, never hand-set: a content hash of the four registry files plus the declared
+ * version. Editing a stance changes the hash, so the stamp cannot drift from what it stamps.
+ */
+export const buildVersion = () => {
+  let declared = '0.0.0';
+  try {
+    declared = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version || declared;
+  } catch { /* no package version is not an error */ }
+  let h = 5381;
+  for (const f of [paths.constitution, paths.roster, paths.routing, paths.contracts]) {
+    let body = '';
+    try { body = fs.readFileSync(f, 'utf8'); } catch { /* counted as empty */ }
+    for (let i = 0; i < body.length; i += 1) h = ((h * 33) ^ body.charCodeAt(i)) >>> 0;
+  }
+  return { version: declared, registry: h.toString(16).padStart(8, '0') };
+};
 
 const wrap = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 
@@ -272,6 +296,8 @@ This feeds routing, Spending and Recognition in the Console. Skipping it starves
 ## Non-negotiable
 
 ${org.constitution.board.principles.map((p) => `- **${p.name}** — ${wrap(p.behaviour)}`).join('\n')}
+
+<!-- F.O.R.G.E. v${buildVersion().version} · registry ${buildVersion().registry} · generated, edit registry/ not this file -->
 `;
 };
 

@@ -14,6 +14,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
 import { load, ROOT } from '../scripts/core.mjs';
 import { observe } from '../scripts/ledger.mjs';
 import * as mailbox from '../scripts/mailbox.mjs';
@@ -608,5 +610,51 @@ describe('shell completions cover the real command surface', () => {
     for (const v of ['ok partial fail blocked', 'direct focused standard campaign', 'EVIDENCE INFERENCE UNKNOWN', 'SUCCESS FAILED BLOCKED', 'lean standard deep']) {
       assert.ok(body.includes(v), `completion is missing the value set "${v}"`);
     }
+  });
+});
+
+/**
+ * Typography and motion discipline.
+ *
+ * This file reached TWENTY distinct font sizes and three differently-written transition
+ * durations by ordinary accretion — nobody chose 12.5px next to 13px, two people rounded
+ * differently a month apart. A scale is only a scale while something enforces it.
+ */
+describe('the Console holds its type scale and its motion', () => {
+  const css = () => fs.readFileSync(path.join(ROOT, 'deck', 'console.css'), 'utf8');
+
+  test('no literal font-size survives — every size names a scale step', () => {
+    const strays = [...css().matchAll(/font-size: *([0-9.]+px)/g)].map((m) => m[1]);
+    assert.deepEqual(strays, [], `literal font sizes are back: ${strays.join(', ')}`);
+  });
+
+  test('no literal duration survives — motion runs on one set of speeds', () => {
+    const strays = [...css().matchAll(/transition:[^;]*?([0-9]*\.[0-9]+s)/g)].map((m) => m[1]);
+    assert.deepEqual(strays, [], `literal transition durations are back: ${strays.join(', ')}`);
+  });
+
+  test('the scale is six steps plus one geometric exception, and no more', () => {
+    const steps = [...css().matchAll(/--t-[a-z]+: *([0-9.]+px)/g)].map((m) => m[1]);
+    assert.equal(steps.length, 7, `the scale has ${steps.length} steps — it is drifting back toward twenty`);
+    assert.equal(new Set(steps).size, 7, 'two scale steps share a value, so one of them is not a step');
+  });
+
+  test('reduced motion is honoured, and not by removing meaning', () => {
+    const body = css();
+    assert.match(body, /prefers-reduced-motion: reduce/, 'the OS-level request to stop animating is ignored');
+    // The tokens must collapse, not the layout — a reduced-motion rule that hid things would
+    // be removing information rather than removing movement.
+    assert.match(body, /--m-quick: 0\.01ms/, 'reduced motion does not actually shorten the durations');
+    assert.ok(!/prefers-reduced-motion[\s\S]{0,400}display: *none/.test(body), 'reduced motion hides content instead of stilling it');
+  });
+});
+
+describe('the editor extension stays a thin shell over the CLI', () => {
+  test('every contributed command exists in the dispatcher, and nothing is reimplemented', () => {
+    // Runs the extension's own manifest check from the main suite, so a CLI rename breaks
+    // here rather than in somebody's command palette.
+    const { execFileSync } = require('node:child_process');
+    const out = execFileSync(process.execPath, [path.join(ROOT, 'vscode', 'test', 'manifest.test.js')], { encoding: 'utf8' });
+    assert.match(out, /^ok — \d+ commands/, out);
   });
 });

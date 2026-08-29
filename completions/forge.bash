@@ -29,7 +29,7 @@ _forge() {
   prev="${COMP_WORDS[COMP_CWORD-1]}"
   cmd="${COMP_WORDS[1]}"
 
-  local commands="plan checklist verify handoff benchmark bench-routing explain new-agent board roster doctor build install charter deck context inbox reply observe audit burn ab-test learn evolve memory spend overlay instruction plugins export decide postmortem patterns compare help"
+  local commands="plan checklist verify handoff benchmark bench-routing explain new-agent board roster doctor build install charter deck context inbox reply observe audit burn ab-test learn evolve memory spend overlay instruction plugins export decide postmortem patterns compare retro publish learn-from federate archive growth lint help"
 
   if [ "$COMP_CWORD" -eq 1 ]; then
     COMPREPLY=($(compgen -W "$commands" -- "$cur"))
@@ -67,6 +67,11 @@ _forge() {
     postmortem)  COMPREPLY=($(compgen -W "--campaign" -- "$cur")) ;;
     patterns)    COMPREPLY=($(compgen -W "--min" -- "$cur")) ;;
     compare)     COMPREPLY=($(compgen -W "--proposal --prefer --avoid" -- "$cur")) ;;
+    retro)       COMPREPLY=($(compgen -W "--out --reasoning --agent --campaign --considered" -- "$cur")) ;;
+    publish)     COMPREPLY=($(compgen -W "--workspace-id --include-instructions --out" -- "$cur")) ;;
+    federate)    COMPREPLY=($(compgen -W "--i-approve-egress" -- "$cur")) ;;
+    archive)     COMPREPLY=($(compgen -W "--before" -- "$cur")) ;;
+    growth)      COMPREPLY=($(compgen -W "--top" -- "$cur")) ;;
     deck)        COMPREPLY=($(compgen -W "--port --vscode" -- "$cur")) ;;
     *)           COMPREPLY=() ;;
   esac

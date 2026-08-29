@@ -23,7 +23,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './core.mjs';
-import { parse } from './yaml.mjs';
+import { readYamlFile } from './yaml.mjs';
 import { readLedger, derive } from './ledger.mjs';
 import { composeVector } from './vector.mjs';
 
@@ -88,7 +88,7 @@ export const GOLDEN_DIR = path.join(ROOT, 'tests', 'benchmarks');
 
 export const loadGolden = (file) => {
   const p = path.isAbsolute(file) ? file : path.join(GOLDEN_DIR, file);
-  return parse(fs.readFileSync(p, 'utf8'));
+  return readYamlFile(p);
 };
 
 /**

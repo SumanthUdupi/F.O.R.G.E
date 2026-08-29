@@ -102,6 +102,10 @@ export const observe = (event, cwd = process.cwd()) => {
     // Which standing hypothesis this outcome tests, so `forge learn` can report which
     // beliefs the evidence confirmed and which it refuted.
     hypothesis: event.hypothesis || null,
+    // Which build of the organization produced this outcome. Without it, "C-8 succeeded and
+    // C-9 failed" cannot distinguish a change in the work from a change in the roster.
+    // Supplied by the caller so that `derive()` stays a pure function of its rows.
+    build: event.build || null,
   };
   const f = files(cwd);
   ensure(f.dir);
@@ -126,9 +130,102 @@ export const observe = (event, cwd = process.cwd()) => {
  */
 export const ASYNC_READ_THRESHOLD = 1024 * 1024;
 
+/**
+ * Sub-campaign ids — one parent, N children.
+ *
+ * Five parallel items writing every outcome under one campaign id makes the ledger say
+ * "campaign C-0001 had nine rows" and never which item each belonged to. `C-0001.3` keeps
+ * the parent groupable (`forge burn --by campaign` still rolls up) while making the item
+ * addressable, which is what `forge checklist` and `forge handoff <campaign> <task>` need.
+ *
+ * A string convention rather than a second field, deliberately: every existing query that
+ * filters on `campaign` keeps working, and `parentCampaign()` is the only thing that has to
+ * know the format.
+ */
+export const subCampaign = (parent, n) => `${parent}.${n}`;
+export const parentCampaign = (id) => String(id || '').split('.')[0] || null;
+export const isSubCampaign = (id) => String(id || '').includes('.');
+
+/**
+ * Ledger shards — one file per year, read as one history.
+ *
+ * `.forge/ledger.jsonl` stays the live file and is never rewritten; `forge archive` MOVES
+ * closed years out to `.forge/ledger.<year>.jsonl`. Nothing is deleted and nothing is
+ * compacted — the shard is the same rows in a different file, which is why `readLedger`
+ * concatenates them in year order and every downstream derivation is unchanged.
+ *
+ * Built now rather than at 100k rows because the shape of the fix, not the urgency, was the
+ * open question. Running `archive` on a 126-row ledger correctly archives nothing.
+ */
+export const shardPaths = (cwd = process.cwd()) => {
+  const d = workspaceDir(cwd);
+  if (!fs.existsSync(d)) return [];
+  return fs
+    .readdirSync(d)
+    .filter((f) => /^ledger\.\d{4}\.jsonl$/.test(f))
+    .sort()
+    .map((f) => path.join(d, f));
+};
+
+const parseRows = (text) =>
+  text.split('\n').filter(Boolean).map((l, i) => {
+    try {
+      return JSON.parse(l);
+    } catch {
+      return { at: null, agent: null, capability: null, outcome: null, corrupt: i + 1 };
+    }
+  });
+
+/**
+ * Move every row from a closed year into its own shard.
+ *
+ * `before` is a year: rows dated strictly earlier are archived. The live file is rewritten
+ * with what remains — the ONLY rewrite of the ledger anywhere in this codebase, and it is a
+ * move, not an edit: every archived row is written to its shard and verified readable before
+ * the live file is truncated. If anything throws in between, the live file is untouched.
+ */
+export const archiveLedger = (cwd = process.cwd(), { before = new Date().getFullYear() } = {}) => {
+  const f = files(cwd);
+  if (!fs.existsSync(f.ledger)) return { archived: 0, kept: 0, shards: [] };
+  const rows = parseRows(fs.readFileSync(f.ledger, 'utf8'));
+  const byYear = {};
+  const keep = [];
+  for (const r of rows) {
+    const y = r.at ? Number(String(r.at).slice(0, 4)) : null;
+    if (y && y < before) (byYear[y] ??= []).push(r);
+    else keep.push(r);
+  }
+  const written = [];
+  for (const [year, list] of Object.entries(byYear)) {
+    const p = path.join(workspaceDir(cwd), `ledger.${year}.jsonl`);
+    // Append, never overwrite — archiving twice must not lose the first archive.
+    fs.appendFileSync(p, `${list.map((r) => JSON.stringify(r)).join('\n')}\n`);
+    // Read it back before touching the live file. A move that cannot be verified is a delete.
+    const check = parseRows(fs.readFileSync(p, 'utf8'));
+    if (check.length < list.length) throw new Error(`shard ${p} did not take every row — the live ledger was not touched`);
+    written.push(p);
+  }
+  if (written.length) {
+    fs.writeFileSync(f.ledger, keep.length ? `${keep.map((r) => JSON.stringify(r)).join('\n')}\n` : '');
+    invalidateMemory(cwd);
+  }
+  return { archived: rows.length - keep.length, kept: keep.length, shards: written };
+};
+
 export const readLedger = (cwd = process.cwd()) => {
   const f = files(cwd);
-  if (!fs.existsSync(f.ledger)) return [];
+  // Shards first, in year order, then the live file — so the history reads as one sequence
+  // and `derive()` cannot tell whether a row was archived.
+  const shards = shardPaths(cwd);
+  const archived = shards.flatMap((p) => {
+    try {
+      return parseRows(fs.readFileSync(p, 'utf8'));
+    } catch {
+      return [];
+    }
+  });
+  if (!fs.existsSync(f.ledger)) return archived;
+  if (archived.length) return [...archived, ...parseRows(fs.readFileSync(f.ledger, 'utf8'))];
   return fs
     .readFileSync(f.ledger, 'utf8')
     .split('\n')
@@ -155,15 +252,22 @@ export const readLedger = (cwd = process.cwd()) => {
  */
 export const readLedgerAsync = async (cwd = process.cwd()) => {
   const f = files(cwd);
-  if (!fs.existsSync(f.ledger)) return [];
+  // Shards are read here too. The first version of this read only the live file, which would
+  // have made the Console silently show a shorter history than the CLI the moment anyone ran
+  // `forge archive` — two views of the same ledger disagreeing is worse than a slow read.
+  const shards = shardPaths(cwd);
+  const archived = [];
+  for (const p2 of shards) {
+    try {
+      archived.push(...parseRows(await fs.promises.readFile(p2, 'utf8')));
+    } catch { /* an unreadable shard is not a reason to lose the live rows */ }
+  }
+  if (!fs.existsSync(f.ledger)) return archived;
   let size = 0;
-  try { size = fs.statSync(f.ledger).size; } catch { return []; }
-  if (size < ASYNC_READ_THRESHOLD) return readLedger(cwd);
+  try { size = fs.statSync(f.ledger).size; } catch { return archived; }
+  if (size < ASYNC_READ_THRESHOLD) return archived.length ? [...archived, ...parseRows(fs.readFileSync(f.ledger, 'utf8'))] : readLedger(cwd);
 
-  const body = await fs.promises.readFile(f.ledger, 'utf8');
-  return body.split('\n').filter(Boolean).map((l, i) => {
-    try { return JSON.parse(l); } catch { return { at: null, agent: null, capability: null, outcome: null, corrupt: i + 1 }; }
-  });
+  return [...archived, ...parseRows(await fs.promises.readFile(f.ledger, 'utf8'))];
 };
 
 const WEIGHT = { ok: 1, partial: 0.5, fail: 0, blocked: null }; // blocked is not the agent's fault
